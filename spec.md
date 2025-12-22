@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-**budget-flow-map** is a web-based visualization tool that presents government budget
+**budget-flow-map** is a web-based visualization tool that presents Japanese government budget
 and spending flows as an interactive, map-like structure.
 
 Instead of relying on drill-down interactions or Top-N filtering,
@@ -24,15 +24,15 @@ Existing approaches to visualizing government budgets suffer from:
 
 ### 2.2 Prior Work
 
-- Previous repository:  
-  https://github.com/igomuni/marumie-rssystem  
+- Previous repository:
+  https://github.com/igomuni/marumie-rssystem
   - Used Nivo Sankey
   - Relied on Top-N + drill-down approach
   - Confirmed scalability and UX limitations
 
 ### 2.3 Design Inspiration
 
-- U.S. Department of Energy (DOE) official website  
+- U.S. Department of Energy (DOE) official website
   http://www.departmentof.energy/
 
 Key inspirations:
@@ -59,13 +59,17 @@ Key inspirations:
 4. **Scalability by Design**
    - Thousands of nodes/edges should be a normal case
 
+5. **No Aggregation or Clustering**
+   - All nodes are rendered individually
+   - TopN filtering is strictly prohibited
+
 ---
 
 ## 4. Data Model
 
 ### 4.1 Input
 
-- Source: RS system CSV data
+- Source: RS system CSV data (FY2024)
 - Core entities:
   - Budget categories
   - Projects / programs
@@ -73,20 +77,33 @@ Key inspirations:
   - Monetary amounts
   - Fiscal year
 
-### 4.2 Internal Representation
+### 4.2 Graph Structure (5-Layer Sankey DAG)
+
+```
+[Ministry] → [Bureau] → [Division] → [Project] → [Recipient]
+    ↓           ↓           ↓            ↓
+  Layer0     Layer1      Layer2       Layer3       Layer4
+```
+
+- All 5 layers are rendered as independent nodes
+- Edges connect only adjacent layers (Ministry→Bureau, Bureau→Division, etc.)
+- Recipients are expressed as edge endpoints from Projects
+
+### 4.3 Internal Representation
 
 - Directed weighted graph (DAG-like)
 - Nodes:
   - `id`
-  - `type` (budget / project / destination)
+  - `type` (ministry / bureau / division / project / recipient)
   - `amount`
+  - `layer` (0-4)
 - Edges:
   - `source`
   - `target`
   - `value`
 
-Pre-aggregation and clustering are allowed,
-but must not erase the existence of underlying entities.
+Pre-aggregation and clustering are NOT allowed.
+All underlying entities must be individually preserved and rendered.
 
 ---
 
@@ -102,78 +119,159 @@ but must not erase the existence of underlying entities.
 
 ### 5.2 Layout Strategy
 
-- Force-directed or flow-aware spatial layout
+- **Build-time pre-calculation**: Layout positions are computed during build and stored as JSON
+- Client-side is responsible for rendering only
+- Sankey-like left-to-right flow-aware spatial layout
 - Emphasis on:
   - Flow continuity
-  - Cluster proximity
+  - Layer-based horizontal positioning
   - Visual density as information
 
 Layout must be **stable across interactions** to preserve mental maps.
 
+### 5.3 Scale Requirements
+
+- **Node count**: 10,000 - 30,000
+- **Edge count**: Tens of thousands
+- **Target frame rate**: 60fps during zoom/pan operations
+
 ---
 
-## 6. Interaction Design
+## 6. Visual Language
 
-### Required
-- Zoom (semantic + geometric)
-- Pan
-- Hover focus
-- Highlight flow paths
+### 6.1 Node Design
 
-### Optional
+**Color (Hybrid approach)**:
+- Base hue: Determined by ministry category (e.g., MHLW=blue, MLIT=green)
+- Saturation: Varies by node type (Ministry=high, Division=medium, Project=low)
+- Lightness: Varies by amount scale (Large=bright, Small=dark)
+
+**Size**:
+- Proportional to budget/spending amount (linear scale)
+- Minimum size threshold to ensure visibility
+
+### 6.2 Edge Design
+
+- **Width**: Linear proportion to amount
+- **Color**: Inherits upstream node (ministry) color
+- **Shape**: Sankey-style Bezier curves (emphasizing horizontal flow)
+- **Opacity**:
+  - Normal: 30%
+  - Hover-related: 100%
+  - Non-related: 10%
+
+### 6.3 Label Display (Zoom-Linked)
+
+| Zoom Level | Visible Content | Labels |
+|------------|-----------------|--------|
+| Overview (1x) | Overall structure, ministry nodes prominent | Ministry names only |
+| Medium (2-4x) | Bureau/Division levels become identifiable | Bureau names shown |
+| Detail (5x+) | Project level individually identifiable | Project names shown |
+
+- Zoom is continuous (not discrete steps)
+- Labels appear progressively based on zoom level
+
+---
+
+## 7. Interaction Design
+
+### 7.1 Required
+
+**Hover**:
+- Highlight directly connected edges only
+- Display node details in tooltip
+
+**Click (Google Maps style)**:
+- Display detailed information in left-side panel
+- Tab switching: Basic Info / Related Recipients / Flow Context
+- Viewport does NOT change (no drill-down)
+
+**Zoom/Pan**:
+- Mouse wheel for zoom
+- Drag to pan
+- Double-click to zoom in (optional)
+
+### 7.2 Optional
+
 - Search & locate
-- Temporal switching (year)
+- Temporal switching (future: multiple years)
 
-### Explicitly Excluded
+### 7.3 Explicitly Excluded
+
 - Step-based drill-down
 - Modal-heavy navigation
 - Pagination-based exploration
+- TopN filtering
+- Visual aggregation/clustering
 
 ---
 
-## 7. Technology Stack (Proposed)
+## 8. Technology Stack
 
-### Frontend
+### 8.1 Frontend
+
 - React
 - TypeScript
-- Zustand or equivalent lightweight state management
+- Zustand (lightweight state management)
 
-### Visualization Candidates
-- D3 (low-level, custom rendering)
-- deck.gl
-- PixiJS
-- regl-based custom WebGL
+### 8.2 Visualization (Candidates)
+
+- **Primary**: deck.gl (ScatterplotLayer + PathLayer) or PixiJS
+- **Layout calculation**: d3-sankey or dagre (build-time only)
+- **Overlay**: DOM/SVG for labels and tooltips
 
 Nivo is explicitly excluded.
 
-### Tooling
+### 8.3 Build Pipeline
+
 - Vite
 - ESLint / Prettier
+- Build-time layout computation (Node.js script)
 - CSV parsing with streaming support
 
 ---
 
-## 8. Non-Goals
+## 9. Non-Goals
 
 - Accounting-level precision UI
 - Mobile-first optimization (tablet support is sufficient)
 - Explanatory storytelling mode (this is an exploration tool)
+- Multiple fiscal year support (FY2024 only for initial release)
 
 ---
 
-## 9. Future Extensions
+## 10. Deferred Decisions
 
-- Multi-country comparison
-- Narrative overlays
-- AI-assisted pattern detection
-- Exportable static views for reports
+The following will be determined iteratively after initial implementation:
+
+| Item | Priority | Reason |
+|------|----------|--------|
+| Search functionality details | Medium | Can be added after core features |
+| Zero-amount item handling | Medium | Requires real data testing |
+| Initial viewport design | Medium | Requires prototype validation |
+| Accessibility requirements | Low | Can be addressed progressively |
+| Print/static export | Low | Out of scope |
+| Multi-year support | Low | Future extension |
 
 ---
 
-## 10. Philosophy
+## 11. Philosophy
 
 This project treats public finance not as a table to be read,
-but as a structure to be navigated.
+but as a **structure to be navigated**.
 
 Understanding emerges from spatial familiarity,
 not from clicking deeper.
+
+The goal is to enable users to **"get familiar by gazing"**
+rather than **"understand by operating"**.
+
+---
+
+## 12. Architectural Constraints
+
+1. **No TopN** - All nodes must be individually rendered
+2. **No Drill-down** - Clicks show info panels, never change the view
+3. **Performance First** - 60fps is the minimum acceptable frame rate
+4. **Traditional Sankey Flow** - Left-to-right directionality is maintained
+5. **Build-time Layout** - Client only renders pre-computed positions
