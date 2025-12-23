@@ -5,14 +5,16 @@
  * 入力: data/intermediate/graph-raw.json
  * 出力: public/data/layout.json (座標付きノード・Bezierパス付きエッジ)
  *
- * d3-sankey を使用して5層Sankeyレイアウトを計算
+ * 独自レイアウトアルゴリズム:
+ * - 府省庁ごとに垂直セクションを分割
+ * - 各セクション内で5層を左から右に配置
+ * - ノードの重なりを防止
+ * - 支出先は複数府省から参照される場合があるため特別処理
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
 import { fileURLToPath } from 'url'
-import { sankey, sankeyLinkHorizontal } from 'd3-sankey'
-import type { SankeyNode, SankeyLink } from 'd3-sankey'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -51,7 +53,6 @@ interface RawGraph {
   edges: RawEdge[]
 }
 
-// 出力型
 interface LayoutNode {
   id: string
   type: NodeType
@@ -94,50 +95,45 @@ interface LayoutData {
   }
 }
 
-// d3-sankey用拡張型
-interface SankeyNodeExtended {
-  id: string
-  type: NodeType
-  layer: number
-  name: string
-  amount: number
-  ministryId: string
-  metadata: Record<string, unknown>
-  // d3-sankeyが追加するプロパティ
-  x0?: number
-  x1?: number
-  y0?: number
-  y1?: number
-}
-
-interface SankeyLinkExtended {
-  id: string
-  source: SankeyNodeExtended | string | number
-  target: SankeyNodeExtended | string | number
-  value: number
-  // d3-sankeyが追加するプロパティ
-  width?: number
-  y0?: number
-  y1?: number
-}
-
 // ============================================================================
 // レイアウト設定
 // ============================================================================
 
-const CANVAS_WIDTH = 4000 // 横幅
-const CANVAS_HEIGHT = 8000 // 縦幅（32K+ノード対応）
-const NODE_PADDING = 2 // ノード間の最小スペース
-const NODE_WIDTH = 60 // ノードの幅
+// レイヤーごとのX位置（5層を左から右に配置）
+const LAYER_X_POSITIONS: Record<number, number> = {
+  0: 100,    // 府省庁
+  1: 500,    // 局
+  2: 900,    // 課
+  3: 1300,   // 事業
+  4: 1700,   // 支出先
+}
 
-// レイヤーごとのX位置（5層を均等配置）
-const LAYER_X_POSITIONS = [
-  100, // Layer 0: 府省庁
-  900, // Layer 1: 局
-  1700, // Layer 2: 課
-  2500, // Layer 3: 事業
-  3300, // Layer 4: 支出先
-]
+const NODE_WIDTH = 50
+const MIN_NODE_HEIGHT = 2
+const NODE_VERTICAL_PADDING = 1
+const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング
+
+// 金額→高さの変換（対数スケール、レイヤーに応じて調整）
+function amountToHeight(amount: number, maxAmount: number, layer: number): number {
+  if (amount <= 0) return MIN_NODE_HEIGHT
+  const logScale = Math.log10(amount + 1) / Math.log10(maxAmount + 1)
+
+  // レイヤーごとに最大高さを調整
+  // Layer 0(府省庁): 大きく表示
+  // Layer 1-3: 中程度
+  // Layer 4(支出先): 非常に小さく（数が多いため）
+  const maxHeight = layer === 0 ? 40 :
+                    layer === 4 ? 4 :  // 支出先は最小限
+                    20
+  return Math.max(MIN_NODE_HEIGHT, logScale * maxHeight)
+}
+
+// エッジ幅の計算（対数スケール）
+function valueToWidth(value: number, maxValue: number): number {
+  if (value <= 0) return 0.5
+  const logScale = Math.log10(value + 1) / Math.log10(maxValue + 1)
+  return Math.max(0.5, logScale * 20)
+}
 
 // ============================================================================
 // Bezierパス生成
@@ -148,36 +144,25 @@ function generateBezierPath(
   sourceY: number,
   targetX: number,
   targetY: number,
-  numPoints: number = 10
+  numPoints: number = 8
 ): [number, number][] {
   const points: [number, number][] = []
-
-  // 水平Bezier曲線の制御点
   const midX = (sourceX + targetX) / 2
 
   for (let i = 0; i <= numPoints; i++) {
     const t = i / numPoints
-
-    // 3次Bezier曲線: P0 -> P1 -> P2 -> P3
-    // P0 = (sourceX, sourceY)
-    // P1 = (midX, sourceY)
-    // P2 = (midX, targetY)
-    // P3 = (targetX, targetY)
     const x =
       (1 - t) ** 3 * sourceX +
       3 * (1 - t) ** 2 * t * midX +
       3 * (1 - t) * t ** 2 * midX +
       t ** 3 * targetX
-
     const y =
       (1 - t) ** 3 * sourceY +
       3 * (1 - t) ** 2 * t * sourceY +
       3 * (1 - t) * t ** 2 * targetY +
       t ** 3 * targetY
-
     points.push([Math.round(x), Math.round(y)])
   }
-
   return points
 }
 
@@ -193,176 +178,193 @@ async function main() {
   console.log(`   入力: ${inputPath}`)
   console.log(`   出力: ${outputPath}`)
 
-  // グラフ読み込み
   const rawGraph: RawGraph = JSON.parse(fs.readFileSync(inputPath, 'utf-8'))
   console.log(`\n📊 グラフ読み込み完了: ${rawGraph.nodes.length} ノード, ${rawGraph.edges.length} エッジ`)
 
   // =========================================================================
-  // Step 1: d3-sankey用のデータ構造に変換
+  // Step 1: ノードとエッジのマップを作成
   // =========================================================================
-  console.log('\n🔧 d3-sankeyデータ構造に変換中...')
+  console.log('\n🔧 データ構造を構築中...')
 
-  // 有効なノードIDセット
-  const validNodeIds = new Set(rawGraph.nodes.map((n) => n.id))
-
-  // d3-sankey用ノード（layerを強制するため独自にソート）
-  const sankeyNodes: SankeyNodeExtended[] = rawGraph.nodes.map((node) => ({
-    ...node,
-  }))
-
-  // d3-sankey用リンク（source/targetはIDを使用）
-  const sankeyLinks: SankeyLinkExtended[] = rawGraph.edges
-    .filter((edge) => {
-      return validNodeIds.has(edge.sourceId) && validNodeIds.has(edge.targetId)
-    })
-    .map((edge) => ({
-      id: edge.id,
-      source: edge.sourceId,
-      target: edge.targetId,
-      value: Math.max(edge.value, 1), // 最小値1（0だとd3-sankeyがエラー）
-    }))
-
-  console.log(`   → ${sankeyNodes.length} ノード, ${sankeyLinks.length} リンク`)
-
-  // =========================================================================
-  // Step 2: d3-sankeyレイアウト計算
-  // =========================================================================
-  console.log('\n📏 d3-sankeyレイアウト計算中...')
-
-  const sankeyGenerator = sankey<SankeyNodeExtended, SankeyLinkExtended>()
-    .nodeId((d) => d.id)
-    .nodeWidth(NODE_WIDTH)
-    .nodePadding(NODE_PADDING)
-    .extent([
-      [0, 0],
-      [CANVAS_WIDTH, CANVAS_HEIGHT],
-    ])
-    .nodeSort((a, b) => {
-      // 同じレイヤー内では金額順（大きい順）
-      return b.amount - a.amount
-    })
-    .linkSort((a, b) => {
-      // リンクは値が大きい順
-      return (b.value || 0) - (a.value || 0)
-    })
-
-  // Sankeyグラフ生成
-  const sankeyGraph = sankeyGenerator({
-    nodes: sankeyNodes.map((n) => ({ ...n })),
-    links: sankeyLinks.map((l) => ({ ...l })),
-  })
-
-  console.log(`   → レイアウト計算完了`)
-
-  // =========================================================================
-  // Step 3: レイヤーごとのX座標を強制（d3-sankeyはレイヤー自動判定するが上書き）
-  // =========================================================================
-  console.log('\n🎯 レイヤー位置を調整中...')
-
-  // レイヤーごとにノードをグループ化
-  const nodesByLayer = new Map<number, typeof sankeyGraph.nodes>()
-  for (const node of sankeyGraph.nodes) {
-    const layer = (node as unknown as RawNode).layer || 0
-    if (!nodesByLayer.has(layer)) {
-      nodesByLayer.set(layer, [])
-    }
-    nodesByLayer.get(layer)!.push(node)
+  const nodeMap = new Map<string, RawNode>()
+  for (const node of rawGraph.nodes) {
+    nodeMap.set(node.id, node)
   }
 
-  // 各レイヤーのX座標を設定し、Y座標を再計算
-  for (const [layer, nodes] of nodesByLayer) {
-    const layerX = LAYER_X_POSITIONS[layer] || LAYER_X_POSITIONS[4]
+  // エッジをソース→ターゲットのマップに
+  const outgoingEdges = new Map<string, RawEdge[]>()
+  const incomingEdges = new Map<string, RawEdge[]>()
+  for (const edge of rawGraph.edges) {
+    if (!outgoingEdges.has(edge.sourceId)) outgoingEdges.set(edge.sourceId, [])
+    if (!incomingEdges.has(edge.targetId)) incomingEdges.set(edge.targetId, [])
+    outgoingEdges.get(edge.sourceId)!.push(edge)
+    incomingEdges.get(edge.targetId)!.push(edge)
+  }
 
-    // Y座標でソート（金額順を維持）
-    nodes.sort((a, b) => (a.y0 || 0) - (b.y0 || 0))
+  // 最大金額を取得（スケーリング用）
+  const maxAmount = Math.max(...rawGraph.nodes.map((n) => n.amount))
+  const maxEdgeValue = Math.max(...rawGraph.edges.map((e) => e.value))
 
-    // Y座標を再配置
-    let currentY = 0
-    for (const node of nodes) {
-      const height = (node.y1 || 0) - (node.y0 || 0)
-      node.x0 = layerX
-      node.x1 = layerX + NODE_WIDTH
-      node.y0 = currentY
-      node.y1 = currentY + height
-      currentY += height + NODE_PADDING
+  // =========================================================================
+  // Step 2: 府省庁ごとにノードをグループ化
+  // =========================================================================
+  console.log('\n📁 府省庁ごとにグループ化中...')
+
+  // 府省庁ノードを金額順にソート
+  const ministryNodes = rawGraph.nodes
+    .filter((n) => n.type === 'ministry')
+    .sort((a, b) => b.amount - a.amount)
+
+  console.log(`   → ${ministryNodes.length} 府省庁`)
+
+  // 各府省庁に属するノードを収集
+  const nodesByMinistry = new Map<string, Map<number, RawNode[]>>()
+
+  for (const ministry of ministryNodes) {
+    nodesByMinistry.set(ministry.id, new Map())
+    for (let layer = 0; layer <= 4; layer++) {
+      nodesByMinistry.get(ministry.id)!.set(layer, [])
+    }
+    // 府省庁自身をLayer 0に追加
+    nodesByMinistry.get(ministry.id)!.get(0)!.push(ministry)
+  }
+
+  // 府省庁以外のノードを対応する府省庁に割り当て
+  for (const node of rawGraph.nodes) {
+    if (node.type === 'ministry') continue
+
+    // 府省庁IDからグループを特定
+    const ministryId = findMinistryId(node, nodeMap, incomingEdges)
+    if (!ministryId || !nodesByMinistry.has(ministryId)) continue
+
+    const layerMap = nodesByMinistry.get(ministryId)!
+    if (!layerMap.has(node.layer)) layerMap.set(node.layer, [])
+    layerMap.get(node.layer)!.push(node)
+  }
+
+  // 各レイヤーのノードを金額順にソート
+  for (const [, layerMap] of nodesByMinistry) {
+    for (const [, nodes] of layerMap) {
+      nodes.sort((a, b) => b.amount - a.amount)
     }
   }
 
   // =========================================================================
-  // Step 4: 出力用データ構造に変換
+  // Step 3: レイアウト計算（府省庁ごとにセクション配置）
   // =========================================================================
-  console.log('\n📦 出力データ構造に変換中...')
+  console.log('\n📏 レイアウト計算中...')
 
-  // ノードマップを作成（ID→座標）
-  const nodePositions = new Map<
-    string,
-    { x0: number; x1: number; y0: number; y1: number }
-  >()
-  for (const node of sankeyGraph.nodes) {
-    nodePositions.set(node.id, {
-      x0: node.x0 || 0,
-      x1: node.x1 || NODE_WIDTH,
-      y0: node.y0 || 0,
-      y1: node.y1 || 10,
+  const layoutNodes: LayoutNode[] = []
+  const nodePositions = new Map<string, { x: number; y: number; height: number }>()
+  const ministrySections = new Map<string, { startY: number; endY: number }>()
+
+  let currentY = 0
+
+  for (const ministry of ministryNodes) {
+    const layerMap = nodesByMinistry.get(ministry.id)!
+    const sectionStartY = currentY
+
+    // 各レイヤーの高さを計算（Layer 0-3のみ、支出先は別処理）
+    const layerHeights: number[] = []
+    for (let layer = 0; layer <= 4; layer++) {
+      const nodes = layerMap.get(layer) || []
+      let totalHeight = 0
+      for (const node of nodes) {
+        totalHeight += amountToHeight(node.amount, maxAmount, layer) + NODE_VERTICAL_PADDING
+      }
+      layerHeights.push(totalHeight)
+    }
+    // セクション高さはLayer 0-3の最大値で決定（支出先は除外）
+    const sectionHeight = Math.max(...layerHeights.slice(0, 4), 30)
+
+    // 各レイヤーのノードを配置
+    for (let layer = 0; layer <= 4; layer++) {
+      const nodes = layerMap.get(layer) || []
+      const layerX = LAYER_X_POSITIONS[layer]
+
+      // このレイヤーのノードをセクション内で中央寄せ
+      const totalNodesHeight = layerHeights[layer]
+      let nodeY = sectionStartY + (sectionHeight - totalNodesHeight) / 2
+
+      for (const node of nodes) {
+        const height = amountToHeight(node.amount, maxAmount, layer)
+
+        const layoutNode: LayoutNode = {
+          id: node.id,
+          type: node.type,
+          layer: node.layer as LayerIndex,
+          name: node.name,
+          amount: node.amount,
+          ministryId: node.ministryId,
+          x: layerX + NODE_WIDTH / 2,
+          y: nodeY + height / 2,
+          width: NODE_WIDTH,
+          height: height,
+          metadata: node.metadata,
+        }
+
+        layoutNodes.push(layoutNode)
+        nodePositions.set(node.id, {
+          x: layoutNode.x,
+          y: layoutNode.y,
+          height: layoutNode.height,
+        })
+
+        nodeY += height + NODE_VERTICAL_PADDING
+      }
+    }
+
+    // 府省庁セクションの範囲を記録
+    ministrySections.set(ministry.name, {
+      startY: sectionStartY,
+      endY: sectionStartY + sectionHeight,
     })
+
+    currentY += sectionHeight + MINISTRY_SECTION_PADDING
   }
 
-  // LayoutNode作成
-  const layoutNodes: LayoutNode[] = sankeyGraph.nodes.map((node) => {
-    const x0 = node.x0 || 0
-    const x1 = node.x1 || NODE_WIDTH
-    const y0 = node.y0 || 0
-    const y1 = node.y1 || 10
-    const rawNode = node as unknown as RawNode
+  // 支出先ノード（Layer 4）の位置を調整
+  adjustRecipientPositions(layoutNodes, nodePositions, rawGraph.edges, nodeMap, ministrySections)
 
-    return {
-      id: node.id,
-      type: rawNode.type,
-      layer: rawNode.layer as LayerIndex,
-      name: rawNode.name,
-      amount: rawNode.amount,
-      ministryId: rawNode.ministryId,
-      x: (x0 + x1) / 2, // 中心X
-      y: (y0 + y1) / 2, // 中心Y
-      width: x1 - x0,
-      height: Math.max(y1 - y0, 1),
-      metadata: rawNode.metadata || {},
-    }
-  })
+  console.log(`   → ${layoutNodes.length} ノード配置完了`)
 
-  // LayoutEdge作成（Bezierパス生成）
+  // =========================================================================
+  // Step 4: エッジのパス生成
+  // =========================================================================
+  console.log('\n🔗 エッジパス生成中...')
+
   const layoutEdges: LayoutEdge[] = []
 
-  for (const link of sankeyGraph.links) {
-    const sourceNode =
-      typeof link.source === 'object' ? link.source : null
-    const targetNode =
-      typeof link.target === 'object' ? link.target : null
+  for (const edge of rawGraph.edges) {
+    const sourcePos = nodePositions.get(edge.sourceId)
+    const targetPos = nodePositions.get(edge.targetId)
 
+    if (!sourcePos || !targetPos) continue
+
+    const sourceNode = nodeMap.get(edge.sourceId)
+    const targetNode = nodeMap.get(edge.targetId)
     if (!sourceNode || !targetNode) continue
 
-    const sourceX = sourceNode.x1 || 0
-    const sourceY = (link.y0 ?? (sourceNode.y0! + sourceNode.y1!) / 2)
-    const targetX = targetNode.x0 || 0
-    const targetY = (link.y1 ?? (targetNode.y0! + targetNode.y1!) / 2)
-
-    const originalLink = link as unknown as SankeyLinkExtended
+    // ソースの右端からターゲットの左端へ
+    const sourceX = LAYER_X_POSITIONS[sourceNode.layer] + NODE_WIDTH
+    const targetX = LAYER_X_POSITIONS[targetNode.layer]
 
     layoutEdges.push({
-      id: originalLink.id,
-      sourceId: sourceNode.id,
-      targetId: targetNode.id,
-      value: link.value || 0,
-      width: Math.max(link.width || 1, 0.5),
-      path: generateBezierPath(sourceX, sourceY, targetX, targetY, 8),
+      id: edge.id,
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      value: edge.value,
+      width: valueToWidth(edge.value, maxEdgeValue),
+      path: generateBezierPath(sourceX, sourcePos.y, targetX, targetPos.y),
     })
   }
 
-  // バウンディングボックス計算
-  let minX = Infinity,
-    maxX = -Infinity,
-    minY = Infinity,
-    maxY = -Infinity
+  console.log(`   → ${layoutEdges.length} エッジ生成完了`)
+
+  // =========================================================================
+  // Step 5: バウンディングボックス計算と出力
+  // =========================================================================
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
   for (const node of layoutNodes) {
     minX = Math.min(minX, node.x - node.width / 2)
     maxX = Math.max(maxX, node.x + node.width / 2)
@@ -370,15 +372,14 @@ async function main() {
     maxY = Math.max(maxY, node.y + node.height / 2)
   }
 
-  // 出力データ
   const layoutData: LayoutData = {
     metadata: {
       generatedAt: new Date().toISOString(),
       fiscalYear: rawGraph.metadata.fiscalYear,
       nodeCount: layoutNodes.length,
       edgeCount: layoutEdges.length,
-      canvasWidth: CANVAS_WIDTH,
-      canvasHeight: CANVAS_HEIGHT,
+      canvasWidth: Math.ceil(maxX) + 100,
+      canvasHeight: Math.ceil(maxY) + 100,
     },
     nodes: layoutNodes,
     edges: layoutEdges,
@@ -390,18 +391,13 @@ async function main() {
     },
   }
 
-  // =========================================================================
-  // Step 5: 出力
-  // =========================================================================
   fs.writeFileSync(outputPath, JSON.stringify(layoutData))
   console.log(`\n✅ 出力完了: ${outputPath}`)
 
-  // ファイルサイズ表示
   const stats = fs.statSync(outputPath)
   const sizeMB = (stats.size / 1024 / 1024).toFixed(2)
   console.log(`   ファイルサイズ: ${sizeMB} MB`)
 
-  // 圧縮
   console.log('\n🗜️  gzip圧縮中...')
   const { execSync } = await import('child_process')
   execSync(`gzip -k -f "${outputPath}"`)
@@ -410,10 +406,120 @@ async function main() {
   console.log(`   圧縮後: ${gzSizeMB} MB (${((gzStats.size / stats.size) * 100).toFixed(1)}%)`)
 
   console.log('\n📈 レイアウト統計:')
-  console.log(`   キャンバス: ${CANVAS_WIDTH} x ${CANVAS_HEIGHT}`)
   console.log(`   バウンド: (${layoutData.bounds.minX}, ${layoutData.bounds.minY}) - (${layoutData.bounds.maxX}, ${layoutData.bounds.maxY})`)
   console.log(`   ノード: ${layoutData.nodes.length}`)
   console.log(`   エッジ: ${layoutData.edges.length}`)
+}
+
+/**
+ * ノードが属する府省庁IDを探す
+ */
+function findMinistryId(
+  node: RawNode,
+  nodeMap: Map<string, RawNode>,
+  incomingEdges: Map<string, RawEdge[]>
+): string | null {
+  // ministryIdが既に設定されている場合はそれを使用
+  if (node.ministryId) {
+    // ministryIdは府省庁名なので、対応する府省庁ノードのIDを探す
+    for (const [id, n] of nodeMap) {
+      if (n.type === 'ministry' && n.name === node.ministryId) {
+        return id
+      }
+    }
+  }
+
+  // インカミングエッジを辿って府省庁を探す
+  const visited = new Set<string>()
+  const queue = [node.id]
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!
+    if (visited.has(currentId)) continue
+    visited.add(currentId)
+
+    const current = nodeMap.get(currentId)
+    if (!current) continue
+
+    if (current.type === 'ministry') {
+      return current.id
+    }
+
+    const edges = incomingEdges.get(currentId) || []
+    for (const edge of edges) {
+      queue.push(edge.sourceId)
+    }
+  }
+
+  return null
+}
+
+/**
+ * 支出先ノードの位置を調整
+ * - 府省庁ごとにセクション内で支出先を配置
+ * - 重なりを解消しつつセクション内に収める
+ */
+function adjustRecipientPositions(
+  layoutNodes: LayoutNode[],
+  nodePositions: Map<string, { x: number; y: number; height: number }>,
+  edges: RawEdge[],
+  nodeMap: Map<string, RawNode>,
+  ministrySections: Map<string, { startY: number; endY: number }>
+) {
+  // 府省庁ごとに支出先をグループ化
+  const recipientsByMinistry = new Map<string, LayoutNode[]>()
+
+  for (const node of layoutNodes) {
+    if (node.type !== 'recipient') continue
+    const ministryName = node.ministryId
+    if (!recipientsByMinistry.has(ministryName)) {
+      recipientsByMinistry.set(ministryName, [])
+    }
+    recipientsByMinistry.get(ministryName)!.push(node)
+  }
+
+  // 支出先ノードごとに、参照元のY位置を収集
+  const recipientSources = new Map<string, number[]>()
+  for (const edge of edges) {
+    const targetNode = nodeMap.get(edge.targetId)
+    if (!targetNode || targetNode.type !== 'recipient') continue
+
+    const sourcePos = nodePositions.get(edge.sourceId)
+    if (!sourcePos) continue
+
+    if (!recipientSources.has(edge.targetId)) {
+      recipientSources.set(edge.targetId, [])
+    }
+    recipientSources.get(edge.targetId)!.push(sourcePos.y)
+  }
+
+  // 各府省庁のセクション内で支出先を配置
+  for (const [ministryName, recipients] of recipientsByMinistry) {
+    const section = ministrySections.get(ministryName)
+    if (!section) continue
+
+    // 参照元の平均Y位置でソート
+    recipients.sort((a, b) => {
+      const aYs = recipientSources.get(a.id) || [a.y]
+      const bYs = recipientSources.get(b.id) || [b.y]
+      const aAvg = aYs.reduce((x, y) => x + y, 0) / aYs.length
+      const bAvg = bYs.reduce((x, y) => x + y, 0) / bYs.length
+      return aAvg - bAvg
+    })
+
+    // セクション内で均等配置
+    const totalHeight = recipients.reduce((sum, n) => sum + n.height + NODE_VERTICAL_PADDING, 0)
+    const availableHeight = section.endY - section.startY
+    const startY = section.startY + Math.max(0, (availableHeight - totalHeight) / 2)
+
+    let currentY = startY
+    for (const node of recipients) {
+      node.y = currentY + node.height / 2
+      const pos = nodePositions.get(node.id)
+      if (pos) pos.y = node.y
+      currentY += node.height + NODE_VERTICAL_PADDING
+    }
+  }
 }
 
 main().catch((err) => {

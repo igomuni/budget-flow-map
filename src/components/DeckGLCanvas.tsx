@@ -19,15 +19,16 @@ export function DeckGLCanvas({ layoutData }: DeckGLCanvasProps) {
   const showTooltip = useStore((state) => state.showTooltip)
   const hideTooltip = useStore((state) => state.hideTooltip)
 
-  // Initialize view state centered on bounds
+  // Initialize view state centered on bounds with appropriate zoom
   const initialViewState = useMemo((): OrthographicViewState => {
     const { bounds } = layoutData
     const centerX = (bounds.minX + bounds.maxX) / 2
     const centerY = (bounds.minY + bounds.maxY) / 2
+    // Start zoomed out to see the full graph
     return {
       target: [centerX, centerY],
-      zoom: 0,
-      minZoom: -2,
+      zoom: -4, // Zoomed out to see full canvas
+      minZoom: -6,
       maxZoom: 6,
     }
   }, [layoutData])
