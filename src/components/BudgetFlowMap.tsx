@@ -1,8 +1,23 @@
+import { useState, useCallback } from 'react'
+import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
 import { DeckGLCanvas } from './DeckGLCanvas'
+import { Minimap } from './Minimap'
 
 export function BudgetFlowMap() {
   const { data, loading, error } = useLayoutData()
+  const [viewState, setViewState] = useState<OrthographicViewState | null>(null)
+  const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
+
+  const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
+    setViewState(vs)
+  }, [])
+
+  const handleMinimapNavigate = useCallback((x: number, y: number) => {
+    setNavigateTarget([x, y])
+    // Reset after a tick to allow re-navigation to same spot
+    setTimeout(() => setNavigateTarget(null), 100)
+  }, [])
 
   if (loading) {
     return (
@@ -37,5 +52,20 @@ export function BudgetFlowMap() {
     )
   }
 
-  return <DeckGLCanvas layoutData={data} />
+  return (
+    <div className="relative h-full w-full">
+      <DeckGLCanvas
+        layoutData={data}
+        onViewStateChange={handleViewStateChange}
+        externalTarget={navigateTarget}
+      />
+      {viewState && (
+        <Minimap
+          layoutData={data}
+          viewState={viewState}
+          onNavigate={handleMinimapNavigate}
+        />
+      )}
+    </div>
+  )
 }

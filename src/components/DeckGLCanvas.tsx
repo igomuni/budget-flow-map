@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import DeckGL from '@deck.gl/react'
 import { OrthographicView } from '@deck.gl/core'
 import type { PickingInfo, OrthographicViewState } from '@deck.gl/core'
@@ -9,9 +9,11 @@ import type { LayoutData, LayoutNode } from '@/types/layout'
 
 interface DeckGLCanvasProps {
   layoutData: LayoutData
+  onViewStateChange?: (viewState: OrthographicViewState) => void
+  externalTarget?: [number, number] | null
 }
 
-export function DeckGLCanvas({ layoutData }: DeckGLCanvasProps) {
+export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget }: DeckGLCanvasProps) {
   const hoveredNodeId = useStore((state) => state.hoveredNodeId)
   const selectedNodeId = useStore((state) => state.selectedNodeId)
   const setHoveredNode = useStore((state) => state.setHoveredNode)
@@ -34,6 +36,21 @@ export function DeckGLCanvas({ layoutData }: DeckGLCanvasProps) {
   }, [layoutData])
 
   const [viewState, setViewState] = useState<OrthographicViewState>(initialViewState)
+
+  // Handle external navigation (from minimap)
+  useEffect(() => {
+    if (externalTarget) {
+      setViewState((prev) => ({
+        ...prev,
+        target: externalTarget,
+      }))
+    }
+  }, [externalTarget])
+
+  // Notify parent of view state changes
+  useEffect(() => {
+    onViewStateChange?.(viewState)
+  }, [viewState, onViewStateChange])
 
   // Create node lookup map for click handling
   const nodeMap = useMemo(() => {
