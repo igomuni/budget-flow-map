@@ -66,15 +66,15 @@ export function BudgetFlowMap() {
 
   return (
     <div className="relative h-full w-full">
-      {/* Main canvas - full width */}
-      <div className="absolute inset-0" style={{ left: MINIMAP_WIDTH }}>
+      {/* Main canvas */}
+      <div className="absolute inset-0" style={{ right: MINIMAP_WIDTH }}>
         <DeckGLCanvas
           layoutData={data}
           onViewStateChange={handleViewStateChange}
           externalTarget={navigateTarget}
         />
       </div>
-      {/* Minimap on left - overlaid */}
+      {/* Minimap on right */}
       <Minimap
         layoutData={data}
         viewState={effectiveViewState}

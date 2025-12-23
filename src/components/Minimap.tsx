@@ -18,6 +18,7 @@ export function Minimap({
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [containerHeight, setContainerHeight] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
   const { bounds, nodes } = layoutData
 
   // Measure container height
@@ -30,7 +31,6 @@ export function Minimap({
         }
       }
     }
-    // Initial measurement after mount
     const timer = setTimeout(updateHeight, 50)
     updateHeight()
     window.addEventListener('resize', updateHeight)
@@ -71,6 +71,22 @@ export function Minimap({
     [bounds, scale]
   )
 
+  // Get canvas coordinates from mouse event
+  const getCanvasCoords = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement> | MouseEvent): [number, number] => {
+      const canvas = canvasRef.current
+      if (!canvas) return [0, 0]
+
+      const rect = canvas.getBoundingClientRect()
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const minimapX = (e.clientX - rect.left) * scaleX
+      const minimapY = (e.clientY - rect.top) * scaleY
+      return [minimapX, minimapY]
+    },
+    []
+  )
+
   // Calculate viewport rectangle on minimap
   const viewportRect = useMemo(() => {
     const zoom = typeof viewState.zoom === 'number' ? viewState.zoom : 0
@@ -99,25 +115,83 @@ export function Minimap({
     }
   }, [viewState, worldToMinimap, width, canvasHeight, bounds])
 
-  // Handle click on minimap
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current
-      if (!canvas) return
-
-      const rect = canvas.getBoundingClientRect()
-      const scaleX = canvas.width / rect.width
-      const scaleY = canvas.height / rect.height
-      const minimapX = (e.clientX - rect.left) * scaleX
-      const minimapY = (e.clientY - rect.top) * scaleY
-
+  // Navigate to position
+  const navigateTo = useCallback(
+    (minimapX: number, minimapY: number) => {
       const [worldX, worldY] = minimapToWorld(minimapX, minimapY)
       onNavigate(worldX, worldY)
     },
     [minimapToWorld, onNavigate]
   )
 
-  // Draw minimap using Canvas 2D - triggered by useEffect
+  // Handle click on minimap
+  const handleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (isDragging) return
+      const [minimapX, minimapY] = getCanvasCoords(e)
+      navigateTo(minimapX, minimapY)
+    },
+    [getCanvasCoords, navigateTo, isDragging]
+  )
+
+  // Handle mouse down for drag
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const [minimapX, minimapY] = getCanvasCoords(e)
+
+      // Check if click is inside viewport rect
+      if (
+        minimapX >= viewportRect.x &&
+        minimapX <= viewportRect.x + viewportRect.width &&
+        minimapY >= viewportRect.y &&
+        minimapY <= viewportRect.y + viewportRect.height
+      ) {
+        setIsDragging(true)
+        e.preventDefault()
+      }
+    },
+    [getCanvasCoords, viewportRect]
+  )
+
+  // Handle mouse move for drag
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const [minimapX, minimapY] = getCanvasCoords(e)
+      navigateTo(minimapX, minimapY)
+    }
+
+    const handleMouseUp = () => {
+      setIsDragging(false)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isDragging, getCanvasCoords, navigateTo])
+
+  // Handle wheel scroll on minimap
+  const handleWheel = useCallback(
+    (e: React.WheelEvent<HTMLCanvasElement>) => {
+      e.preventDefault()
+
+      // Scroll amount in world coordinates
+      const scrollSpeed = 500
+      const target = viewState.target ?? [(bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2]
+
+      // Scroll vertically
+      const newY = target[1] + (e.deltaY > 0 ? scrollSpeed : -scrollSpeed)
+      onNavigate(target[0], newY)
+    },
+    [viewState, bounds, onNavigate]
+  )
+
+  // Draw minimap using Canvas 2D
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || canvasHeight <= 0) return
@@ -146,7 +220,7 @@ export function Minimap({
     }
 
     // Draw viewport rectangle
-    ctx.strokeStyle = '#ff6b6b'
+    ctx.strokeStyle = isDragging ? '#ffcc00' : '#ff6b6b'
     ctx.lineWidth = 2
     ctx.strokeRect(
       viewportRect.x,
@@ -154,12 +228,21 @@ export function Minimap({
       viewportRect.width,
       viewportRect.height
     )
-  }, [nodes, worldToMinimap, viewportRect, width, canvasHeight])
+
+    // Fill viewport with semi-transparent color
+    ctx.fillStyle = isDragging ? 'rgba(255, 204, 0, 0.1)' : 'rgba(255, 107, 107, 0.1)'
+    ctx.fillRect(
+      viewportRect.x,
+      viewportRect.y,
+      viewportRect.width,
+      viewportRect.height
+    )
+  }, [nodes, worldToMinimap, viewportRect, width, canvasHeight, isDragging])
 
   return (
     <div
       ref={containerRef}
-      className="absolute left-0 top-0 bottom-0 bg-gray-900 border-r border-gray-700 flex flex-col z-10"
+      className="absolute right-0 top-0 bottom-0 bg-gray-900 border-l border-gray-700 flex flex-col z-10"
       style={{ width }}
     >
       <div className="bg-gray-800 px-2 py-1 text-xs text-gray-400 border-b border-gray-700 text-center shrink-0">
@@ -171,7 +254,9 @@ export function Minimap({
           width={width}
           height={canvasHeight}
           onClick={handleClick}
-          className="cursor-crosshair absolute inset-0"
+          onMouseDown={handleMouseDown}
+          onWheel={handleWheel}
+          className={`absolute inset-0 ${isDragging ? 'cursor-grabbing' : 'cursor-crosshair'}`}
           style={{ width: '100%', height: '100%' }}
         />
       </div>
