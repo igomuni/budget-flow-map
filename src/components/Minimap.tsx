@@ -17,29 +17,39 @@ export function Minimap({
 }: MinimapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [height, setHeight] = useState(400)
+  const [containerHeight, setContainerHeight] = useState(0)
   const { bounds, nodes } = layoutData
 
   // Measure container height
   useEffect(() => {
     const updateHeight = () => {
       if (containerRef.current) {
-        setHeight(containerRef.current.clientHeight)
+        const h = containerRef.current.clientHeight
+        if (h > 0) {
+          setContainerHeight(h)
+        }
       }
     }
+    // Initial measurement after mount
+    const timer = setTimeout(updateHeight, 50)
     updateHeight()
     window.addEventListener('resize', updateHeight)
-    return () => window.removeEventListener('resize', updateHeight)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('resize', updateHeight)
+    }
   }, [])
+
+  const canvasHeight = Math.max(containerHeight - 28, 100)
 
   // Calculate scale to fit bounds in minimap
   const scale = useMemo(() => {
     const boundsWidth = bounds.maxX - bounds.minX
     const boundsHeight = bounds.maxY - bounds.minY
     const scaleX = (width - 20) / boundsWidth
-    const scaleY = (height - 20) / boundsHeight
+    const scaleY = (canvasHeight - 20) / boundsHeight
     return Math.min(scaleX, scaleY)
-  }, [bounds, width, height])
+  }, [bounds, width, canvasHeight])
 
   // Convert world coords to minimap coords
   const worldToMinimap = useCallback(
@@ -63,13 +73,10 @@ export function Minimap({
 
   // Calculate viewport rectangle on minimap
   const viewportRect = useMemo(() => {
-    // Viewport size depends on zoom level
-    // At zoom 0, viewport is roughly window size in world coords
-    // Each zoom level doubles/halves the view
     const zoom = typeof viewState.zoom === 'number' ? viewState.zoom : 0
     const zoomFactor = Math.pow(2, zoom)
-    const viewportWorldWidth = 1200 / zoomFactor // Approximate window width
-    const viewportWorldHeight = 800 / zoomFactor // Approximate window height
+    const viewportWorldWidth = 1200 / zoomFactor
+    const viewportWorldHeight = 800 / zoomFactor
 
     const target = viewState.target ?? [(bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2]
     const centerX = target[0]
@@ -88,9 +95,9 @@ export function Minimap({
       x: Math.max(0, left),
       y: Math.max(0, top),
       width: Math.min(width, right - left),
-      height: Math.min(height, bottom - top),
+      height: Math.min(canvasHeight, bottom - top),
     }
-  }, [viewState, worldToMinimap, width, height])
+  }, [viewState, worldToMinimap, width, canvasHeight, bounds])
 
   // Handle click on minimap
   const handleClick = useCallback(
@@ -99,8 +106,10 @@ export function Minimap({
       if (!canvas) return
 
       const rect = canvas.getBoundingClientRect()
-      const minimapX = e.clientX - rect.left
-      const minimapY = e.clientY - rect.top
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const minimapX = (e.clientX - rect.left) * scaleX
+      const minimapY = (e.clientY - rect.top) * scaleY
 
       const [worldX, worldY] = minimapToWorld(minimapX, minimapY)
       onNavigate(worldX, worldY)
@@ -108,73 +117,62 @@ export function Minimap({
     [minimapToWorld, onNavigate]
   )
 
-  // Draw minimap using Canvas 2D
-  const canvasCallback = useCallback(
-    (canvas: HTMLCanvasElement | null) => {
-      if (!canvas) return
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
+  // Draw minimap using Canvas 2D - triggered by useEffect
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || canvasHeight <= 0) return
 
-      // Clear
-      ctx.fillStyle = '#1a1a2e'
-      ctx.fillRect(0, 0, width, height)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
 
-      // Draw nodes as tiny dots, colored by layer
-      const layerColors = [
-        '#4ecdc4', // ministry
-        '#45b7d1', // bureau
-        '#96ceb4', // division
-        '#ffeaa7', // project
-        '#dfe6e9', // recipient
-      ]
+    // Clear
+    ctx.fillStyle = '#1a1a2e'
+    ctx.fillRect(0, 0, width, canvasHeight)
 
-      for (const node of nodes) {
-        const [x, y] = worldToMinimap(node.x, node.y)
-        ctx.fillStyle = layerColors[node.layer] || '#ffffff'
-        // Size based on layer (larger for higher layers)
-        const size = node.layer === 0 ? 3 : node.layer === 4 ? 0.5 : 1.5
-        ctx.fillRect(x - size / 2, y - size / 2, size, size)
-      }
+    // Draw nodes as tiny dots, colored by layer
+    const layerColors = [
+      '#4ecdc4', // ministry
+      '#45b7d1', // bureau
+      '#96ceb4', // division
+      '#ffeaa7', // project
+      '#dfe6e9', // recipient
+    ]
 
-      // Draw viewport rectangle
-      ctx.strokeStyle = '#ff6b6b'
-      ctx.lineWidth = 2
-      ctx.strokeRect(
-        viewportRect.x,
-        viewportRect.y,
-        viewportRect.width,
-        viewportRect.height
-      )
-    },
-    [nodes, worldToMinimap, viewportRect, width, height]
-  )
+    for (const node of nodes) {
+      const [x, y] = worldToMinimap(node.x, node.y)
+      ctx.fillStyle = layerColors[node.layer] || '#ffffff'
+      const size = node.layer === 0 ? 4 : node.layer === 4 ? 0.5 : 1.5
+      ctx.fillRect(x - size / 2, y - size / 2, size, size)
+    }
 
-  // Combine refs
-  const setRefs = useCallback(
-    (canvas: HTMLCanvasElement | null) => {
-      (canvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = canvas
-      canvasCallback(canvas)
-    },
-    [canvasCallback]
-  )
+    // Draw viewport rectangle
+    ctx.strokeStyle = '#ff6b6b'
+    ctx.lineWidth = 2
+    ctx.strokeRect(
+      viewportRect.x,
+      viewportRect.y,
+      viewportRect.width,
+      viewportRect.height
+    )
+  }, [nodes, worldToMinimap, viewportRect, width, canvasHeight])
 
   return (
     <div
       ref={containerRef}
-      className="absolute left-0 top-0 bottom-0 bg-gray-900/90 border-r border-gray-700 flex flex-col"
+      className="absolute left-0 top-0 bottom-0 bg-gray-900 border-r border-gray-700 flex flex-col z-10"
       style={{ width }}
     >
       <div className="bg-gray-800 px-2 py-1 text-xs text-gray-400 border-b border-gray-700 text-center shrink-0">
         Overview
       </div>
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         <canvas
-          ref={setRefs}
+          ref={canvasRef}
           width={width}
-          height={height - 28}
+          height={canvasHeight}
           onClick={handleClick}
-          className="cursor-crosshair"
-          style={{ display: 'block', width: '100%', height: '100%' }}
+          className="cursor-crosshair absolute inset-0"
+          style={{ width: '100%', height: '100%' }}
         />
       </div>
     </div>

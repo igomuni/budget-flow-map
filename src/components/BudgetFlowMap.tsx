@@ -54,25 +54,33 @@ export function BudgetFlowMap() {
 
   const MINIMAP_WIDTH = 120
 
+  // Create initial viewState for minimap before DeckGL reports back
+  const initialViewState: OrthographicViewState = {
+    target: [(data.bounds.minX + data.bounds.maxX) / 2, (data.bounds.minY + data.bounds.maxY) / 2],
+    zoom: -4,
+    minZoom: -6,
+    maxZoom: 6,
+  }
+
+  const effectiveViewState = viewState || initialViewState
+
   return (
-    <div className="relative h-full w-full flex">
-      {/* Minimap on left */}
-      {viewState && (
-        <Minimap
-          layoutData={data}
-          viewState={viewState}
-          onNavigate={handleMinimapNavigate}
-          width={MINIMAP_WIDTH}
-        />
-      )}
-      {/* Main canvas */}
-      <div className="flex-1 h-full" style={{ marginLeft: MINIMAP_WIDTH }}>
+    <div className="relative h-full w-full">
+      {/* Main canvas - full width */}
+      <div className="absolute inset-0" style={{ left: MINIMAP_WIDTH }}>
         <DeckGLCanvas
           layoutData={data}
           onViewStateChange={handleViewStateChange}
           externalTarget={navigateTarget}
         />
       </div>
+      {/* Minimap on left - overlaid */}
+      <Minimap
+        layoutData={data}
+        viewState={effectiveViewState}
+        onNavigate={handleMinimapNavigate}
+        width={MINIMAP_WIDTH}
+      />
     </div>
   )
 }
