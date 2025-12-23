@@ -52,20 +52,27 @@ export function BudgetFlowMap() {
     )
   }
 
+  const MINIMAP_WIDTH = 120
+
   return (
-    <div className="relative h-full w-full">
-      <DeckGLCanvas
-        layoutData={data}
-        onViewStateChange={handleViewStateChange}
-        externalTarget={navigateTarget}
-      />
+    <div className="relative h-full w-full flex">
+      {/* Minimap on left */}
       {viewState && (
         <Minimap
           layoutData={data}
           viewState={viewState}
           onNavigate={handleMinimapNavigate}
+          width={MINIMAP_WIDTH}
         />
       )}
+      {/* Main canvas */}
+      <div className="flex-1 h-full" style={{ marginLeft: MINIMAP_WIDTH }}>
+        <DeckGLCanvas
+          layoutData={data}
+          onViewStateChange={handleViewStateChange}
+          externalTarget={navigateTarget}
+        />
+      </div>
     </div>
   )
 }

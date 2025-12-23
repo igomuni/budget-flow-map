@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef, useEffect, useState } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import type { LayoutData } from '@/types/layout'
 
@@ -7,18 +7,30 @@ interface MinimapProps {
   viewState: OrthographicViewState
   onNavigate: (x: number, y: number) => void
   width?: number
-  height?: number
 }
 
 export function Minimap({
   layoutData,
   viewState,
   onNavigate,
-  width = 180,
-  height = 300,
+  width = 120,
 }: MinimapProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [height, setHeight] = useState(400)
   const { bounds, nodes } = layoutData
+
+  // Measure container height
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        setHeight(containerRef.current.clientHeight)
+      }
+    }
+    updateHeight()
+    window.addEventListener('resize', updateHeight)
+    return () => window.removeEventListener('resize', updateHeight)
+  }, [])
 
   // Calculate scale to fit bounds in minimap
   const scale = useMemo(() => {
@@ -148,20 +160,23 @@ export function Minimap({
 
   return (
     <div
-      className="absolute bottom-4 left-4 rounded-lg overflow-hidden shadow-lg border border-gray-600"
-      style={{ width, height }}
+      ref={containerRef}
+      className="absolute left-0 top-0 bottom-0 bg-gray-900/90 border-r border-gray-700 flex flex-col"
+      style={{ width }}
     >
-      <div className="bg-gray-800 px-2 py-1 text-xs text-gray-300 border-b border-gray-600">
+      <div className="bg-gray-800 px-2 py-1 text-xs text-gray-400 border-b border-gray-700 text-center shrink-0">
         Overview
       </div>
-      <canvas
-        ref={setRefs}
-        width={width}
-        height={height - 24}
-        onClick={handleClick}
-        className="cursor-crosshair"
-        style={{ display: 'block' }}
-      />
+      <div className="flex-1 min-h-0">
+        <canvas
+          ref={setRefs}
+          width={width}
+          height={height - 28}
+          onClick={handleClick}
+          className="cursor-crosshair"
+          style={{ display: 'block', width: '100%', height: '100%' }}
+        />
+      </div>
     </div>
   )
 }
