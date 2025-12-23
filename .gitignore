@@ -31,5 +31,8 @@ public/data/*.json
 data/download/
 data/year_2024/
 
+# Intermediate graph data
+data/intermediate/
+
 # Intermediate build artifacts
 *.tsbuildinfo

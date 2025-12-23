@@ -8,23 +8,27 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prebuild": "bash scripts/decompress-data.sh"
+    "prebuild": "bash scripts/decompress-data.sh",
+    "data:graph": "npx tsx scripts/generate-graph.ts",
+    "data:layout": "npx tsx scripts/compute-layout.ts",
+    "data:pipeline": "npm run data:graph && npm run data:layout"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "@deck.gl/core": "^9.1.0",
     "@deck.gl/layers": "^9.1.0",
     "@deck.gl/react": "^9.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@types/d3-sankey": "^0.12.5",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
-    "@types/d3-sankey": "^0.12.4",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "csv-parse": "^6.1.0",
     "d3-sankey": "^0.12.3",
     "eslint": "^9.17.0",
     "eslint-plugin-react-hooks": "^5.1.0",

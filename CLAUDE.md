@@ -85,10 +85,33 @@ CSVデータ → normalize_csv.py → generate-graph.ts → compute-layout.ts �
 ## 開発コマンド
 
 ```bash
-npm run dev        # 開発サーバー起動
-npm run build      # 本番ビルド
-npm run lint       # ESLintチェック
+npm run dev           # 開発サーバー起動
+npm run build         # 本番ビルド
+npm run lint          # ESLintチェック
+npm run data:graph    # CSV → graph-raw.json
+npm run data:layout   # graph-raw.json → layout.json
+npm run data:pipeline # 上記2つを連続実行
 ```
+
+## データパイプライン詳細
+
+```
+marumie-rssystem/data/year_2024/*.csv  (正規化済みCSV)
+                   │
+                   ▼ npm run data:graph
+data/intermediate/graph-raw.json  (座標なしグラフ)
+                   │
+                   ▼ npm run data:layout
+public/data/layout.json  (座標付き + Bezierパス)
+                   │
+                   ▼ gzip
+public/data/layout.json.gz  (Git管理用)
+```
+
+### スクリプト
+- `scripts/generate-graph.ts`: CSV→グラフ変換
+- `scripts/compute-layout.ts`: d3-sankeyレイアウト計算
+- `scripts/decompress-data.sh`: prebuildフックで解凍
 
 ## 仕様書
 
