@@ -58,16 +58,40 @@ export function useDynamicTopN(
     const otherProjectMap = new Map<string, LayoutNode>() // ministryId -> otherProjectNode
     let otherRecipientNode: LayoutNode | null = null
 
-    // Layer 0-2と、TopN内のLayer 3-4を追加
+    // Layer 0-2を追加
     for (const node of originalData.nodes) {
       if (node.layer <= 2) {
         newNodes.push(node)
-      } else if (node.layer === 3 && keptProjectIds.has(node.id)) {
-        newNodes.push(node)
-      } else if (node.layer === 4 && keptRecipientIds.has(node.id)) {
+      }
+    }
+
+    // Layer 3 (事業): TopN内のノードを追加
+    for (const node of originalData.nodes) {
+      if (node.layer === 3 && keptProjectIds.has(node.id)) {
         newNodes.push(node)
       }
     }
+
+    // Layer 4 (支出先): TopN内のノードを金額降順で並べ替え、Y座標を再計算
+    const keptRecipientNodes = originalData.nodes
+      .filter(n => n.layer === 4 && keptRecipientIds.has(n.id))
+      .sort((a, b) => b.amount - a.amount)
+
+    // 支出先のY座標を金額降順に再配置
+    const recipientStartY = 0 // 開始Y座標
+    const recipientSpacing = 3 // ノード間のスペーシング
+    let currentY = recipientStartY
+
+    const repositionedRecipients = keptRecipientNodes.map(node => {
+      const newNode = {
+        ...node,
+        y: currentY + node.height / 2 // 中心座標
+      }
+      currentY += node.height + recipientSpacing
+      return newNode
+    })
+
+    newNodes.push(...repositionedRecipients)
 
     // 府省庁ごとの事業Otherノードを作成
     for (const [ministryId, projects] of projectsByMinistry) {
@@ -99,10 +123,11 @@ export function useDynamicTopN(
     }
 
     // 支出先の単一Otherノードを作成（府省庁横断）
+    // Y座標は全支出先の最下位（currentYの続き）に配置
     if (aggregatedRecipients.length > 0) {
       const totalAmount = aggregatedRecipients.reduce((sum, n) => sum + n.amount, 0)
-      const avgY = aggregatedRecipients.reduce((sum, n) => sum + n.y, 0) / aggregatedRecipients.length
       const firstRecipient = aggregatedRecipients[0]
+      const otherHeight = Math.max(2, Math.log10(totalAmount + 1) * 2)
 
       otherRecipientNode = {
         id: `other_recipients_layer4_dynamic`,
@@ -112,9 +137,9 @@ export function useDynamicTopN(
         amount: totalAmount,
         ministryId: '', // 府省庁に依存しない
         x: firstRecipient.x,
-        y: avgY,
+        y: currentY + otherHeight / 2, // 最下位に配置
         width: firstRecipient.width,
-        height: Math.max(2, Math.log10(totalAmount + 1) * 2),
+        height: otherHeight,
         metadata: {
           isOther: true,
           aggregatedCount: aggregatedRecipients.length,
