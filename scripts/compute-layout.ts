@@ -400,6 +400,10 @@ async function main() {
       edgeCount: layoutEdges.length,
       canvasWidth: Math.ceil(maxX) + 100,
       canvasHeight: Math.ceil(maxY) + 100,
+      topNSettings: {
+        projects: topProjects,
+        recipients: topRecipients,
+      },
     },
     nodes: layoutNodes,
     edges: layoutEdges,

@@ -4,6 +4,7 @@ import { useLayoutData } from '@/hooks/useLayoutData'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
+import { TopNSettings } from './TopNSettings'
 import type { LayoutData } from '@/types/layout'
 
 export function BudgetFlowMap() {
@@ -163,6 +164,8 @@ export function BudgetFlowMap() {
         onNavigate={handleMinimapNavigate}
         width={MINIMAP_WIDTH}
       />
+      {/* TopN Settings */}
+      <TopNSettings currentSettings={scaledData.metadata.topNSettings} />
       {/* Map Controls */}
       <MapControls
         zoom={currentZoom}

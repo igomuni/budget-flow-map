@@ -68,6 +68,14 @@ export interface LayoutBounds {
 }
 
 /**
+ * TopN aggregation settings
+ */
+export interface TopNSettings {
+  projects: number
+  recipients: number
+}
+
+/**
  * Metadata about the layout
  */
 export interface LayoutMetadata {
@@ -77,6 +85,7 @@ export interface LayoutMetadata {
   edgeCount: number
   canvasWidth: number
   canvasHeight: number
+  topNSettings?: TopNSettings
 }
 
 /**
