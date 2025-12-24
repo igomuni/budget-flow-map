@@ -45,8 +45,14 @@ export function getMinistryColor(ministryId: string): [number, number, number] {
 /**
  * Get the fill color for a node (RGBA)
  * Color varies by ministry (hue) and layer (saturation)
+ * Layer 4 (recipients) are colored gray as they are ministry-agnostic
  */
 export function getNodeColor(node: LayoutNode): [number, number, number, number] {
+  // Layer 4 (recipients) are ministry-agnostic, use neutral gray
+  if (node.layer === 4) {
+    return [120, 120, 120, 255] // Neutral gray
+  }
+
   const baseColor = getMinistryColor(node.ministryId)
   const saturationMultiplier = SATURATION_BY_LAYER[node.layer]
 
