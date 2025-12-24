@@ -1,13 +1,17 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
+import { MapControls } from './MapControls'
+import type { LayoutData } from '@/types/layout'
 
 export function BudgetFlowMap() {
   const { data, loading, error } = useLayoutData()
   const [viewState, setViewState] = useState<OrthographicViewState | null>(null)
   const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
+  const [nodeSpacingX, setNodeSpacingX] = useState(1)
+  const [nodeSpacingY, setNodeSpacingY] = useState(1)
 
   const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
     setViewState(vs)
@@ -18,6 +22,82 @@ export function BudgetFlowMap() {
     // Reset after a tick to allow re-navigation to same spot
     setTimeout(() => setNavigateTarget(null), 100)
   }, [])
+
+  // Handle zoom change from controls
+  const handleZoomChange = useCallback((newZoom: number) => {
+    setViewState((prev) => {
+      if (!prev) return prev
+      return { ...prev, zoom: newZoom }
+    })
+  }, [])
+
+  // Scale layout data based on spacing settings
+  const scaledData = useMemo((): LayoutData | null => {
+    if (!data) return null
+
+    // Calculate center of original bounds
+    const centerX = (data.bounds.minX + data.bounds.maxX) / 2
+    const centerY = (data.bounds.minY + data.bounds.maxY) / 2
+
+    // Scale nodes around center
+    const scaledNodes = data.nodes.map((node) => ({
+      ...node,
+      x: centerX + (node.x - centerX) * nodeSpacingX,
+      y: centerY + (node.y - centerY) * nodeSpacingY,
+    }))
+
+    // Scale edges (Bezier control points)
+    const scaledEdges = data.edges.map((edge) => ({
+      ...edge,
+      path: edge.path.map(([x, y]) => [
+        centerX + (x - centerX) * nodeSpacingX,
+        centerY + (y - centerY) * nodeSpacingY,
+      ] as [number, number]),
+    }))
+
+    // Scale bounds
+    const scaledBounds = {
+      minX: centerX + (data.bounds.minX - centerX) * nodeSpacingX,
+      maxX: centerX + (data.bounds.maxX - centerX) * nodeSpacingX,
+      minY: centerY + (data.bounds.minY - centerY) * nodeSpacingY,
+      maxY: centerY + (data.bounds.maxY - centerY) * nodeSpacingY,
+    }
+
+    return {
+      ...data,
+      nodes: scaledNodes,
+      edges: scaledEdges,
+      bounds: scaledBounds,
+    }
+  }, [data, nodeSpacingX, nodeSpacingY])
+
+  // Handle fit to screen - calculate zoom to fit entire bounds
+  const handleFitToScreen = useCallback(() => {
+    if (!scaledData) return
+    const centerX = (scaledData.bounds.minX + scaledData.bounds.maxX) / 2
+    const centerY = (scaledData.bounds.minY + scaledData.bounds.maxY) / 2
+
+    // Calculate bounds size
+    const boundsWidth = scaledData.bounds.maxX - scaledData.bounds.minX
+    const boundsHeight = scaledData.bounds.maxY - scaledData.bounds.minY
+
+    // Assume viewport is roughly 1200x800 (will be adjusted by deck.gl)
+    const viewportWidth = 1200
+    const viewportHeight = 800
+
+    // Calculate zoom level to fit bounds with some padding
+    const padding = 1.1 // 10% padding
+    const zoomX = Math.log2(viewportWidth / (boundsWidth * padding))
+    const zoomY = Math.log2(viewportHeight / (boundsHeight * padding))
+    const fitZoom = Math.min(zoomX, zoomY)
+
+    setViewState({
+      target: [centerX, centerY],
+      zoom: fitZoom,
+      minZoom: -13,
+      maxZoom: 6,
+    })
+  }, [scaledData])
 
   if (loading) {
     return (
@@ -44,7 +124,7 @@ export function BudgetFlowMap() {
     )
   }
 
-  if (!data) {
+  if (!scaledData) {
     return (
       <div className="h-full w-full flex items-center justify-center bg-slate-900">
         <p className="text-slate-500">No data available</p>
@@ -56,30 +136,44 @@ export function BudgetFlowMap() {
 
   // Create initial viewState for minimap before DeckGL reports back
   const initialViewState: OrthographicViewState = {
-    target: [(data.bounds.minX + data.bounds.maxX) / 2, (data.bounds.minY + data.bounds.maxY) / 2],
+    target: [(scaledData.bounds.minX + scaledData.bounds.maxX) / 2, (scaledData.bounds.minY + scaledData.bounds.maxY) / 2],
     zoom: -4,
-    minZoom: -6,
+    minZoom: -13,
     maxZoom: 6,
   }
 
   const effectiveViewState = viewState || initialViewState
+  const currentZoom = typeof effectiveViewState.zoom === 'number' ? effectiveViewState.zoom : -4
 
   return (
     <div className="relative h-full w-full">
       {/* Main canvas */}
       <div className="absolute inset-0" style={{ right: MINIMAP_WIDTH }}>
         <DeckGLCanvas
-          layoutData={data}
+          layoutData={scaledData}
           onViewStateChange={handleViewStateChange}
           externalTarget={navigateTarget}
+          externalZoom={viewState ? currentZoom : undefined}
         />
       </div>
       {/* Minimap on right */}
       <Minimap
-        layoutData={data}
+        layoutData={scaledData}
         viewState={effectiveViewState}
         onNavigate={handleMinimapNavigate}
         width={MINIMAP_WIDTH}
+      />
+      {/* Map Controls */}
+      <MapControls
+        zoom={currentZoom}
+        minZoom={-13}
+        maxZoom={6}
+        onZoomChange={handleZoomChange}
+        nodeSpacingX={nodeSpacingX}
+        nodeSpacingY={nodeSpacingY}
+        onNodeSpacingXChange={setNodeSpacingX}
+        onNodeSpacingYChange={setNodeSpacingY}
+        onFitToScreen={handleFitToScreen}
       />
     </div>
   )

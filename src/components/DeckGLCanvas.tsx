@@ -11,9 +11,10 @@ interface DeckGLCanvasProps {
   layoutData: LayoutData
   onViewStateChange?: (viewState: OrthographicViewState) => void
   externalTarget?: [number, number] | null
+  externalZoom?: number
 }
 
-export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget }: DeckGLCanvasProps) {
+export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, externalZoom }: DeckGLCanvasProps) {
   const hoveredNodeId = useStore((state) => state.hoveredNodeId)
   const selectedNodeId = useStore((state) => state.selectedNodeId)
   const setHoveredNode = useStore((state) => state.setHoveredNode)
@@ -30,7 +31,7 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget }: 
     return {
       target: [centerX, centerY],
       zoom: -4, // Zoomed out to see full canvas
-      minZoom: -6,
+      minZoom: -13, // Allow 100x more zoom out
       maxZoom: 6,
     }
   }, [layoutData])
@@ -46,6 +47,16 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget }: 
       }))
     }
   }, [externalTarget])
+
+  // Handle external zoom change (from controls)
+  useEffect(() => {
+    if (externalZoom !== undefined) {
+      setViewState((prev) => ({
+        ...prev,
+        zoom: externalZoom,
+      }))
+    }
+  }, [externalZoom])
 
   // Notify parent of view state changes
   useEffect(() => {
