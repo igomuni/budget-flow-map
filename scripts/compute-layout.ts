@@ -178,28 +178,14 @@ async function main() {
   const inputPath = path.resolve(__dirname, '../data/intermediate/graph-raw.json')
   const outputPath = path.resolve(__dirname, '../public/data/layout.json')
 
-  // コマンドライン引数からTopN設定を取得
-  const topProjects = parseInt(process.argv[2]) || DEFAULT_TOP_PROJECTS
-  const topRecipients = parseInt(process.argv[3]) || DEFAULT_TOP_RECIPIENTS
-
   console.log('📐 レイアウト計算を開始...')
   console.log(`   入力: ${inputPath}`)
   console.log(`   出力: ${outputPath}`)
-  console.log(`   TopN設定: 事業=${topProjects}, 支出先=${topRecipients}`)
+  console.log(`   モード: 全データ（動的フィルタリング用）`)
 
-  const rawGraphRaw: RawGraph = JSON.parse(fs.readFileSync(inputPath, 'utf-8'))
-  console.log(`\n📊 グラフ読み込み完了: ${rawGraphRaw.nodes.length} ノード, ${rawGraphRaw.edges.length} エッジ`)
-
-  // TopN集約を適用
-  const { nodes: aggregatedNodes, edges: aggregatedEdges } = aggregateTopN(rawGraphRaw, topProjects, topRecipients)
-
-  const rawGraph: RawGraph = {
-    metadata: rawGraphRaw.metadata,
-    nodes: aggregatedNodes,
-    edges: aggregatedEdges
-  }
-
-  console.log(`\n📊 集約後のグラフ: ${rawGraph.nodes.length} ノード, ${rawGraph.edges.length} エッジ`)
+  const rawGraph: RawGraph = JSON.parse(fs.readFileSync(inputPath, 'utf-8'))
+  console.log(`\n📊 グラフ読み込み完了: ${rawGraph.nodes.length} ノード, ${rawGraph.edges.length} エッジ`)
+  console.log(`   ※ 集約なし（クライアントサイドで動的フィルタリング）`)
 
   // =========================================================================
   // Step 1: ノードとエッジのマップを作成
@@ -400,10 +386,6 @@ async function main() {
       edgeCount: layoutEdges.length,
       canvasWidth: Math.ceil(maxX) + 100,
       canvasHeight: Math.ceil(maxY) + 100,
-      topNSettings: {
-        projects: topProjects,
-        recipients: topRecipients,
-      },
     },
     nodes: layoutNodes,
     edges: layoutEdges,

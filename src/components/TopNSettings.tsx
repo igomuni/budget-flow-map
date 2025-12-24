@@ -1,8 +1,6 @@
-import { useState, useCallback } from 'react'
-import type { TopNSettings } from '@/types/layout'
+import { useState } from 'react'
 
 interface TopNSettingsProps {
-  currentSettings?: TopNSettings
   topProjects: number
   topRecipients: number
   onTopProjectsChange: (value: number) => void
@@ -10,19 +8,12 @@ interface TopNSettingsProps {
 }
 
 export function TopNSettings({
-  currentSettings,
   topProjects,
   topRecipients,
   onTopProjectsChange,
   onTopRecipientsChange
 }: TopNSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)
-
-  const handleCopyCommand = useCallback(() => {
-    const command = `npm run data:layout ${topProjects} ${topRecipients}`
-    navigator.clipboard.writeText(command)
-    alert('コマンドをクリップボードにコピーしました')
-  }, [topProjects, topRecipients])
 
   if (!isOpen) {
     return (
@@ -43,7 +34,7 @@ export function TopNSettings({
   return (
     <div className="absolute top-4 left-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg p-4 w-80">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-gray-800">TopN集約設定（リアルタイム）</h3>
+        <h3 className="text-sm font-bold text-gray-800">TopN表示設定</h3>
         <button
           onClick={() => setIsOpen(false)}
           className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -54,13 +45,12 @@ export function TopNSettings({
         </button>
       </div>
 
-      <div className="space-y-3 mb-4">
+      <div className="space-y-3">
         {/* Live settings display */}
         <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
           <div className="font-medium text-green-800 mb-1">現在の表示</div>
           <div className="text-green-700">
-            事業: Top {topProjects.toLocaleString()} /
-            支出先: Top {topRecipients.toLocaleString()}
+            事業: Top {topProjects.toLocaleString()} / 支出先: Top {topRecipients.toLocaleString()}
           </div>
           <div className="text-[10px] text-green-600 mt-1">
             ✓ スライダー変更で即座に反映
@@ -106,28 +96,12 @@ export function TopNSettings({
             <span>5000</span>
           </div>
         </div>
-      </div>
 
-      {/* Optional: Instructions for pre-generating */}
-      {currentSettings && (
-        <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-3">
-          <div className="text-xs text-blue-800 mb-1">
-            <strong>事前生成された設定:</strong>
-          </div>
-          <div className="text-[11px] text-blue-700">
-            事業: {currentSettings.projects} / 支出先: {currentSettings.recipients}
-          </div>
-          <div className="bg-gray-900 text-gray-100 rounded p-2 mt-2 font-mono text-[11px] overflow-x-auto">
-            npm run data:layout {topProjects} {topRecipients}
-          </div>
-          <button
-            onClick={handleCopyCommand}
-            className="w-full mt-2 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-medium py-1 px-2 rounded transition-colors"
-          >
-            コマンドをコピー
-          </button>
+        {/* Info */}
+        <div className="bg-blue-50 border border-blue-200 rounded p-2 text-[10px] text-blue-700">
+          全データ（32,609ノード）から動的にフィルタリング中
         </div>
-      )}
+      </div>
     </div>
   )
 }

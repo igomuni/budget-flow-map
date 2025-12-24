@@ -172,7 +172,6 @@ export function BudgetFlowMap() {
       />
       {/* TopN Settings */}
       <TopNSettings
-        currentSettings={scaledData.metadata.topNSettings}
         topProjects={topProjects}
         topRecipients={topRecipients}
         onTopProjectsChange={setTopProjects}
