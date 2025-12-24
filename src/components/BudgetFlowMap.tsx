@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
+import { useDynamicTopN } from '@/hooks/useDynamicTopN'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
@@ -8,11 +9,16 @@ import { TopNSettings } from './TopNSettings'
 import type { LayoutData } from '@/types/layout'
 
 export function BudgetFlowMap() {
-  const { data, loading, error } = useLayoutData()
+  const { data: rawData, loading, error } = useLayoutData()
   const [viewState, setViewState] = useState<OrthographicViewState | null>(null)
   const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
   const [nodeSpacingX, setNodeSpacingX] = useState(1)
   const [nodeSpacingY, setNodeSpacingY] = useState(1)
+  const [topProjects, setTopProjects] = useState(500)
+  const [topRecipients, setTopRecipients] = useState(1000)
+
+  // 動的TopNフィルタリングを適用
+  const data = useDynamicTopN(rawData, { topProjects, topRecipients })
 
   const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
     setViewState(vs)
@@ -165,7 +171,13 @@ export function BudgetFlowMap() {
         width={MINIMAP_WIDTH}
       />
       {/* TopN Settings */}
-      <TopNSettings currentSettings={scaledData.metadata.topNSettings} />
+      <TopNSettings
+        currentSettings={scaledData.metadata.topNSettings}
+        topProjects={topProjects}
+        topRecipients={topRecipients}
+        onTopProjectsChange={setTopProjects}
+        onTopRecipientsChange={setTopRecipients}
+      />
       {/* Map Controls */}
       <MapControls
         zoom={currentZoom}

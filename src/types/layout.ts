@@ -26,6 +26,11 @@ export interface NodeMetadata {
   corporateNumber?: string
   location?: string
   corporateType?: string
+
+  // Aggregation metadata (for "Other" nodes)
+  isOther?: boolean
+  aggregatedCount?: number
+  aggregatedIds?: string[]
 }
 
 /**
