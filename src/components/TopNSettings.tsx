@@ -14,6 +14,16 @@ export function TopNSettings({
   onTopRecipientsChange
 }: TopNSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [draftProjects, setDraftProjects] = useState(topProjects)
+  const [draftRecipients, setDraftRecipients] = useState(topRecipients)
+
+  // 適用ボタンが有効かどうか（値が変更されているか）
+  const hasChanges = draftProjects !== topProjects || draftRecipients !== topRecipients
+
+  const handleApply = () => {
+    onTopProjectsChange(draftProjects)
+    onTopRecipientsChange(draftRecipients)
+  }
 
   if (!isOpen) {
     return (
@@ -46,29 +56,26 @@ export function TopNSettings({
       </div>
 
       <div className="space-y-3">
-        {/* Live settings display */}
+        {/* Current display */}
         <div className="bg-green-50 border border-green-200 rounded p-2 text-xs">
           <div className="font-medium text-green-800 mb-1">現在の表示</div>
           <div className="text-green-700">
             事業: Top {topProjects.toLocaleString()} / 支出先: Top {topRecipients.toLocaleString()}
-          </div>
-          <div className="text-[10px] text-green-600 mt-1">
-            ✓ スライダー変更で即座に反映
           </div>
         </div>
 
         {/* Projects slider */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
-            事業 (Layer 3) - Top {topProjects.toLocaleString()}
+            事業 (Layer 3) - Top {draftProjects.toLocaleString()}
           </label>
           <input
             type="range"
             min={50}
             max={2000}
             step={50}
-            value={topProjects}
-            onChange={(e) => onTopProjectsChange(parseInt(e.target.value))}
+            value={draftProjects}
+            onChange={(e) => setDraftProjects(parseInt(e.target.value))}
             className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
           />
           <div className="flex justify-between text-[10px] text-gray-400 mt-1">
@@ -80,15 +87,15 @@ export function TopNSettings({
         {/* Recipients slider */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
-            支出先 (Layer 4) - Top {topRecipients.toLocaleString()}
+            支出先 (Layer 4) - Top {draftRecipients.toLocaleString()}
           </label>
           <input
             type="range"
             min={100}
             max={5000}
             step={100}
-            value={topRecipients}
-            onChange={(e) => onTopRecipientsChange(parseInt(e.target.value))}
+            value={draftRecipients}
+            onChange={(e) => setDraftRecipients(parseInt(e.target.value))}
             className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
           />
           <div className="flex justify-between text-[10px] text-gray-400 mt-1">
@@ -97,9 +104,22 @@ export function TopNSettings({
           </div>
         </div>
 
+        {/* Apply button */}
+        <button
+          onClick={handleApply}
+          disabled={!hasChanges}
+          className={`w-full py-2 px-4 rounded-lg font-medium text-sm transition-colors ${
+            hasChanges
+              ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+          }`}
+        >
+          {hasChanges ? '適用して再描画' : '変更なし'}
+        </button>
+
         {/* Info */}
         <div className="bg-blue-50 border border-blue-200 rounded p-2 text-[10px] text-blue-700">
-          全データ（32,609ノード）から動的にフィルタリング中
+          全データ（32,609ノード）から動的にフィルタリング
         </div>
       </div>
     </div>
