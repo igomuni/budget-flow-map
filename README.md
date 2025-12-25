@@ -42,6 +42,23 @@ npm run dev
 npm run build
 ```
 
+## Vercelへのデプロイ
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/igomuni/budget-flow-map)
+
+### 手動デプロイ
+
+1. Vercelアカウントにログイン
+2. 「New Project」から本リポジトリをインポート
+3. ビルド設定は自動検出されます（`vercel.json`参照）
+4. デプロイ
+
+### 重要事項
+
+- **prebuildフック**: ビルド前に`layout.json.gz`を自動解凍します
+- **静的アセット**: `public/data/layout.json.gz`（約20MB）がデプロイに含まれます
+- **フレームワーク**: Vite（自動検出）
+
 ## データパイプライン
 
 ```
