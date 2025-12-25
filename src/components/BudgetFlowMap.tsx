@@ -8,6 +8,7 @@ import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
 import { SearchPanel } from './SearchPanel'
+import { InfoPanel } from './InfoPanel/InfoPanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
 import type { LayoutData } from '@/types/layout'
 
@@ -278,53 +279,58 @@ export function BudgetFlowMap() {
   const currentZoom = typeof effectiveViewState.zoom === 'number' ? effectiveViewState.zoom : -4
 
   return (
-    <div className="relative h-full w-full">
-      {/* Main canvas */}
-      <div className="absolute inset-0" style={{ right: MINIMAP_WIDTH }}>
-        <DeckGLCanvas
+    <div className="relative h-full w-full flex">
+      {/* Info Panel on left */}
+      <InfoPanel />
+      {/* Main content area */}
+      <div className="flex-1 relative">
+        {/* Main canvas */}
+        <div className="absolute inset-0" style={{ right: MINIMAP_WIDTH }}>
+          <DeckGLCanvas
+            layoutData={scaledData}
+            onViewStateChange={handleViewStateChange}
+            externalTarget={navigateTarget}
+            externalZoom={currentZoom}
+            externalSelectedNodeId={selectedNodeId}
+            onNodeSelect={setSelectedNodeId}
+          />
+        </div>
+        {/* Minimap on right */}
+        <Minimap
           layoutData={scaledData}
-          onViewStateChange={handleViewStateChange}
-          externalTarget={navigateTarget}
-          externalZoom={currentZoom}
-          externalSelectedNodeId={selectedNodeId}
-          onNodeSelect={setSelectedNodeId}
+          viewState={effectiveViewState}
+          onNavigate={handleMinimapNavigate}
+          width={MINIMAP_WIDTH}
+        />
+        {/* Search Panel */}
+        <SearchPanel
+          nodes={scaledData.nodes}
+          onNodeSelect={handleSearchSelect}
+        />
+        {/* TopN Settings */}
+        <TopNSettings
+          topProjects={topProjects}
+          topRecipients={topRecipients}
+          threshold={threshold}
+          onTopProjectsChange={setTopProjects}
+          onTopRecipientsChange={setTopRecipients}
+          onThresholdChange={setThreshold}
+        />
+        {/* Map Controls */}
+        <MapControls
+          zoom={currentZoom}
+          minZoom={-13}
+          maxZoom={6}
+          onZoomChange={handleZoomChange}
+          nodeSpacingX={nodeSpacingX}
+          nodeSpacingY={nodeSpacingY}
+          nodeWidth={nodeWidth}
+          onNodeSpacingXChange={setNodeSpacingX}
+          onNodeSpacingYChange={setNodeSpacingY}
+          onNodeWidthChange={setNodeWidth}
+          onFitToScreen={handleFitToScreen}
         />
       </div>
-      {/* Minimap on right */}
-      <Minimap
-        layoutData={scaledData}
-        viewState={effectiveViewState}
-        onNavigate={handleMinimapNavigate}
-        width={MINIMAP_WIDTH}
-      />
-      {/* Search Panel */}
-      <SearchPanel
-        nodes={scaledData.nodes}
-        onNodeSelect={handleSearchSelect}
-      />
-      {/* TopN Settings */}
-      <TopNSettings
-        topProjects={topProjects}
-        topRecipients={topRecipients}
-        threshold={threshold}
-        onTopProjectsChange={setTopProjects}
-        onTopRecipientsChange={setTopRecipients}
-        onThresholdChange={setThreshold}
-      />
-      {/* Map Controls */}
-      <MapControls
-        zoom={currentZoom}
-        minZoom={-13}
-        maxZoom={6}
-        onZoomChange={handleZoomChange}
-        nodeSpacingX={nodeSpacingX}
-        nodeSpacingY={nodeSpacingY}
-        nodeWidth={nodeWidth}
-        onNodeSpacingXChange={setNodeSpacingX}
-        onNodeSpacingYChange={setNodeSpacingY}
-        onNodeWidthChange={setNodeWidth}
-        onFitToScreen={handleFitToScreen}
-      />
     </div>
   )
 }
