@@ -10,8 +10,8 @@ interface DynamicTopNOptions {
 
 // 定数
 // 閾値を基準に線形スケール: 閾値 = MIN_HEIGHT
-// 例: 閾値1000億円なら、1000億円 = 2px, 2000億円 = 4px, 1兆円 = 20px
-const MIN_HEIGHT = 2
+// 例: 閾値1000億円なら、1000億円 = 1px, 2000億円 = 2px, 1兆円 = 10px
+const MIN_HEIGHT = 1
 
 /**
  * 動的にTopNフィルタリングと閾値ベースの高さ調整を適用するフック

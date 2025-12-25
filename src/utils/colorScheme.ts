@@ -45,12 +45,12 @@ export function getMinistryColor(ministryId: string): [number, number, number] {
 /**
  * Get the fill color for a node (RGBA)
  * Color varies by ministry (hue) and layer (saturation)
- * Layer 4 (recipients) use a distinct warm color palette
+ * Layer 4 (recipients) use a distinct red color palette
  */
 export function getNodeColor(node: LayoutNode): [number, number, number, number] {
-  // Layer 4 (recipients) use warm amber/orange tones to stand out
+  // Layer 4 (recipients) use vibrant red tones to stand out
   if (node.layer === 4) {
-    return [255, 167, 38, 255] // Vibrant amber/orange
+    return [244, 67, 54, 255] // Vibrant red (Material Design Red 500)
   }
 
   const baseColor = getMinistryColor(node.ministryId)

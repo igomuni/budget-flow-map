@@ -209,7 +209,7 @@ export function Minimap({
       '#45b7d1', // bureau - blue
       '#96ceb4', // division - green
       '#ffeaa7', // project - yellow
-      '#ffa726', // recipient - vibrant orange
+      '#f44336', // recipient - vibrant red
     ]
 
     for (const node of nodes) {

@@ -182,7 +182,7 @@ export function TopNSettings({
             <span>10兆円</span>
           </div>
           <div className="text-[10px] text-gray-500 mt-1">
-            閾値未満のノードは最小高さ（2px）で表示
+            閾値未満のノードは最小高さ（1px）で表示
           </div>
         </div>
 
