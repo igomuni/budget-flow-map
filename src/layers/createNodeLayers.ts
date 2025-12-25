@@ -61,21 +61,24 @@ export function createNodeLayers(
           return baseColor
         },
 
-        // Stroke - highlight selected node with bright stroke
+        // Stroke - only show for selected/hovered nodes
         stroked: true,
         getLineColor: (d) => {
           if (d.id === selectedNodeId) {
             return [255, 200, 0, 255] as [number, number, number, number] // Bright gold stroke for selected
           }
-          return [255, 255, 255, 100] as [number, number, number, number] // Default white stroke
+          if (d.id === hoveredNodeId) {
+            return [255, 255, 255, 255] as [number, number, number, number] // White stroke for hovered
+          }
+          return [0, 0, 0, 0] as [number, number, number, number] // No stroke otherwise
         },
         getLineWidth: (d) => {
-          if (d.id === selectedNodeId) {
-            return 3 // Thicker stroke for selected
+          if (d.id === selectedNodeId || d.id === hoveredNodeId) {
+            return 3 // Thicker stroke for selected/hovered
           }
-          return 1
+          return 0
         },
-        lineWidthMinPixels: 1,
+        lineWidthMinPixels: 0,
         lineWidthMaxPixels: 3,
 
         // Performance: only update colors when selection changes

@@ -99,15 +99,17 @@ export function useDynamicTopN(
         return (bMinistry?.amount || 0) - (aMinistry?.amount || 0)
       })
 
-    // Layer 0-2のノード配置
+    // Layer 0-2のノード配置（レイヤーごとに独立して配置）
     const ministryEndY = new Map<string, number>()
-    let globalY = 0
+    const layerCurrentY = [0, 0, 0] // 各レイヤーの現在のY位置
 
     for (const [ministryId, layerMap] of sortedMinistries) {
-      let currentY = globalY
+      const layerEnds = [0, 0, 0]
 
       for (const layer of [0, 1, 2]) {
+        let currentY = layerCurrentY[layer]
         const nodes = (layerMap.get(layer) || []).sort((a, b) => b.amount - a.amount)
+
         for (const node of nodes) {
           const height = calculateHeight(node.amount)
           newNodes.push({
@@ -117,13 +119,19 @@ export function useDynamicTopN(
           })
           currentY += height + nodeSpacing
         }
+
+        layerEnds[layer] = currentY
+        layerCurrentY[layer] = currentY
       }
 
-      ministryEndY.set(ministryId, currentY)
-      globalY = currentY + ministrySectionPadding
+      // この府省庁のすべてのレイヤーの終端の最大値を記録
+      ministryEndY.set(ministryId, Math.max(...layerEnds))
     }
 
-    // Layer 3 (事業) の配置
+    // 全レイヤーの最大Y位置をglobalYとして使用
+    const globalY = Math.max(...layerCurrentY) + ministrySectionPadding
+
+    // Layer 3 (事業) の配置（レイヤーの最初は0から開始）
     const projectsByMinistryForLayout = new Map<string, LayoutNode[]>()
     for (const node of originalData.nodes) {
       if (node.layer === 3 && keptProjectIds.has(node.id)) {
@@ -135,16 +143,17 @@ export function useDynamicTopN(
     }
 
     const ministryProjectEndY = new Map<string, number>()
+    let layer3CurrentY = 0
 
     for (const [ministryId] of sortedMinistries) {
       const projects = projectsByMinistryForLayout.get(ministryId)
       if (!projects || projects.length === 0) {
-        ministryProjectEndY.set(ministryId, ministryEndY.get(ministryId) || 0)
+        ministryProjectEndY.set(ministryId, layer3CurrentY)
         continue
       }
 
       const sortedProjects = projects.sort((a, b) => b.amount - a.amount)
-      let currentY = ministryEndY.get(ministryId) || 0
+      let currentY = layer3CurrentY
 
       for (const node of sortedProjects) {
         const height = calculateHeight(node.amount)
@@ -157,9 +166,10 @@ export function useDynamicTopN(
       }
 
       ministryProjectEndY.set(ministryId, currentY)
+      layer3CurrentY = currentY
     }
 
-    // Layer 4 (支出先) の配置
+    // Layer 4 (支出先) の配置（レイヤーの最初は0から開始）
     const keptRecipientNodes = originalData.nodes
       .filter(n => n.layer === 4 && keptRecipientIds.has(n.id))
       .sort((a, b) => b.amount - a.amount)

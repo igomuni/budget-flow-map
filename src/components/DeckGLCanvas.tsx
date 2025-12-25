@@ -73,8 +73,7 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, ex
   }, [layoutData.nodes])
 
   // Create connected edges and nodes lookup for highlighting
-  // Hover: only direct connections
-  // Selection: all ancestors and descendants
+  // Both hover and selection: show all ancestors and descendants (BFS traversal)
   const { connectedEdges, connectedNodeIds } = useMemo(() => {
     const activeId = hoveredNodeId || selectedNodeId
     if (!activeId) return { connectedEdges: new Set<string>(), connectedNodeIds: new Set<string>() }
@@ -85,19 +84,7 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, ex
     // Add the active node itself
     nodeIds.add(activeId)
 
-    // For hover: only show direct connections
-    if (hoveredNodeId && !selectedNodeId) {
-      for (const edge of layoutData.edges) {
-        if (edge.sourceId === activeId || edge.targetId === activeId) {
-          edges.add(edge.id)
-          nodeIds.add(edge.sourceId)
-          nodeIds.add(edge.targetId)
-        }
-      }
-      return { connectedEdges: edges, connectedNodeIds: nodeIds }
-    }
-
-    // For selection: show all ancestors and descendants (BFS traversal)
+    // Show all ancestors and descendants (BFS traversal)
     // Build adjacency maps for traversal
     const sourceToTargets = new Map<string, string[]>()
     const targetToSources = new Map<string, string[]>()
