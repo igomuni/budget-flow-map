@@ -12,15 +12,27 @@ interface DeckGLCanvasProps {
   onViewStateChange?: (viewState: OrthographicViewState) => void
   externalTarget?: [number, number] | null
   externalZoom?: number
+  externalSelectedNodeId?: string | null
+  onNodeSelect?: (nodeId: string | null) => void
 }
 
-export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, externalZoom }: DeckGLCanvasProps) {
+export function DeckGLCanvas({
+  layoutData,
+  onViewStateChange,
+  externalTarget,
+  externalZoom,
+  externalSelectedNodeId,
+  onNodeSelect
+}: DeckGLCanvasProps) {
   const hoveredNodeId = useStore((state) => state.hoveredNodeId)
-  const selectedNodeId = useStore((state) => state.selectedNodeId)
+  const storeSelectedNodeId = useStore((state) => state.selectedNodeId)
   const setHoveredNode = useStore((state) => state.setHoveredNode)
   const setSelectedNode = useStore((state) => state.setSelectedNode)
   const showTooltip = useStore((state) => state.showTooltip)
   const hideTooltip = useStore((state) => state.hideTooltip)
+
+  // Use external selection if provided, otherwise use store
+  const selectedNodeId = externalSelectedNodeId ?? storeSelectedNodeId
 
   // Initialize view state centered on bounds with appropriate zoom
   const initialViewState = useMemo((): OrthographicViewState => {
@@ -189,12 +201,14 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, ex
       if (info.object && 'id' in info.object) {
         const node = info.object as LayoutNode
         setSelectedNode(node.id, nodeMap.get(node.id) || null)
+        onNodeSelect?.(node.id)
       } else {
         // Click on empty space clears selection
         setSelectedNode(null, null)
+        onNodeSelect?.(null)
       }
     },
-    [setSelectedNode, nodeMap]
+    [setSelectedNode, nodeMap, onNodeSelect]
   )
 
   // Handle view state change

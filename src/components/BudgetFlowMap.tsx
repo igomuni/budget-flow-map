@@ -2,10 +2,12 @@ import { useState, useCallback, useMemo } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
 import { useDynamicTopN } from '@/hooks/useDynamicTopN'
+import { useUrlState } from '@/hooks/useUrlState'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
+import { SearchPanel } from './SearchPanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
 import type { LayoutData } from '@/types/layout'
 
@@ -13,6 +15,7 @@ export function BudgetFlowMap() {
   const { data: rawData, loading, error } = useLayoutData()
   const [viewState, setViewState] = useState<OrthographicViewState | null>(null)
   const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
   const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
   const [nodeWidth, setNodeWidth] = useState(50) // px単位
@@ -22,6 +25,83 @@ export function BudgetFlowMap() {
 
   // 動的TopNフィルタリングを適用
   const data = useDynamicTopN(rawData, { topProjects, topRecipients, threshold })
+
+  // URL状態同期
+  const handleUrlStateChange = useCallback((urlState: {
+    x?: number
+    y?: number
+    zoom?: number
+    node?: string
+    topProjects?: number
+    topRecipients?: number
+    threshold?: number
+  }) => {
+    // Update view state from URL
+    if (urlState.x !== undefined && urlState.y !== undefined) {
+      setViewState(prev => ({
+        ...prev,
+        target: [urlState.x!, urlState.y!] as [number, number],
+        zoom: urlState.zoom ?? prev?.zoom ?? -4,
+        minZoom: -13,
+        maxZoom: 6,
+      }))
+    } else if (urlState.zoom !== undefined) {
+      setViewState(prev => ({
+        ...prev,
+        zoom: urlState.zoom!,
+        minZoom: -13,
+        maxZoom: 6,
+      }))
+    }
+
+    // Update selection from URL
+    if (urlState.node !== undefined) {
+      setSelectedNodeId(urlState.node)
+    }
+
+    // Update TopN settings from URL
+    if (urlState.topProjects !== undefined) {
+      setTopProjects(urlState.topProjects)
+    }
+    if (urlState.topRecipients !== undefined) {
+      setTopRecipients(urlState.topRecipients)
+    }
+    if (urlState.threshold !== undefined) {
+      setThreshold(urlState.threshold)
+    }
+  }, [])
+
+  // Get current target coordinates from view state
+  const currentTarget = viewState?.target as [number, number] | undefined
+  const urlZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : undefined
+
+  useUrlState({
+    x: currentTarget?.[0],
+    y: currentTarget?.[1],
+    zoom: urlZoom,
+    selectedNodeId,
+    topProjects,
+    topRecipients,
+    threshold,
+    onStateChange: handleUrlStateChange,
+  })
+
+  // Handle search result selection - navigate to node and select it
+  const handleSearchSelect = useCallback((nodeId: string, x: number, y: number) => {
+    // Find node in scaled data to get correct position
+    setSelectedNodeId(nodeId)
+    setNavigateTarget([x, y])
+    // Also zoom in to make the node visible
+    const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+    setViewState(prev => ({
+      ...prev,
+      target: [x, y] as [number, number],
+      zoom: Math.max(currentZoom, -2), // Zoom in if too far out
+      minZoom: -13,
+      maxZoom: 6,
+    }))
+    setTimeout(() => setNavigateTarget(null), 100)
+  }, [viewState])
 
   const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
     setViewState(vs)
@@ -206,6 +286,8 @@ export function BudgetFlowMap() {
           onViewStateChange={handleViewStateChange}
           externalTarget={navigateTarget}
           externalZoom={currentZoom}
+          externalSelectedNodeId={selectedNodeId}
+          onNodeSelect={setSelectedNodeId}
         />
       </div>
       {/* Minimap on right */}
@@ -214,6 +296,11 @@ export function BudgetFlowMap() {
         viewState={effectiveViewState}
         onNavigate={handleMinimapNavigate}
         width={MINIMAP_WIDTH}
+      />
+      {/* Search Panel */}
+      <SearchPanel
+        nodes={scaledData.nodes}
+        onNodeSelect={handleSearchSelect}
       />
       {/* TopN Settings */}
       <TopNSettings
