@@ -181,13 +181,12 @@ export function useDynamicTopN(
       recipientY += height + nodeSpacing
     }
 
-    // 府省庁ごとの事業Otherノード
+    // 府省庁ごとの事業Otherノード（layer3CurrentYから連続配置）
     for (const [ministryId, projects] of projectsByMinistry) {
       if (projects.length > 0) {
         const totalAmount = projects.reduce((sum, n) => sum + n.amount, 0)
         const firstProject = projects[0]
         const otherHeight = calculateHeight(totalAmount)
-        const currentY = ministryProjectEndY.get(ministryId) || layer3CurrentY
 
         const otherNode: LayoutNode = {
           id: `other_${ministryId}_layer3_dynamic`,
@@ -197,7 +196,7 @@ export function useDynamicTopN(
           amount: totalAmount,
           ministryId,
           x: firstProject.x,
-          y: currentY + otherHeight / 2,
+          y: layer3CurrentY + otherHeight / 2,
           width: firstProject.width,
           height: otherHeight,
           metadata: {
@@ -209,10 +208,8 @@ export function useDynamicTopN(
         newNodes.push(otherNode)
         otherProjectMap.set(ministryId, otherNode)
 
-        // Update layer3CurrentY to avoid overlaps
-        const newY = currentY + otherHeight + nodeSpacing
-        ministryProjectEndY.set(ministryId, newY)
-        layer3CurrentY = Math.max(layer3CurrentY, newY)
+        // 次の「その他」ノードのために更新
+        layer3CurrentY += otherHeight + nodeSpacing
       }
     }
 
