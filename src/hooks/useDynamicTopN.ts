@@ -98,36 +98,12 @@ export function useDynamicTopN(
         return (bMinistry?.amount || 0) - (aMinistry?.amount || 0)
       })
 
-    // Layer 0-2のノード配置（レイヤーごとに独立して配置）
+    // 府省庁ごとにLayer 0-3をまとめて配置
     const ministryEndY = new Map<string, number>()
-    const layerCurrentY = [0, 0, 0] // 各レイヤーの現在のY位置
+    const ministrySectionPadding = 20 // 府省庁間のパディング
+    let globalY = 0
 
-    for (const [ministryId, layerMap] of sortedMinistries) {
-      const layerEnds = [0, 0, 0]
-
-      for (const layer of [0, 1, 2]) {
-        let currentY = layerCurrentY[layer]
-        const nodes = (layerMap.get(layer) || []).sort((a, b) => b.amount - a.amount)
-
-        for (const node of nodes) {
-          const height = calculateHeight(node.amount)
-          newNodes.push({
-            ...node,
-            height,
-            y: currentY + height / 2
-          })
-          currentY += height + nodeSpacing
-        }
-
-        layerEnds[layer] = currentY
-        layerCurrentY[layer] = currentY
-      }
-
-      // この府省庁のすべてのレイヤーの終端の最大値を記録
-      ministryEndY.set(ministryId, Math.max(...layerEnds))
-    }
-
-    // Layer 3 (事業) の配置（レイヤーの最初は0から開始）
+    // Layer 3 (事業) を府省庁ごとにグループ化
     const projectsByMinistryForLayout = new Map<string, LayoutNode[]>()
     for (const node of originalData.nodes) {
       if (node.layer === 3 && keptProjectIds.has(node.id)) {
@@ -138,31 +114,69 @@ export function useDynamicTopN(
       }
     }
 
-    const ministryProjectEndY = new Map<string, number>()
-    let layer3CurrentY = 0
+    for (const [ministryId, layerMap] of sortedMinistries) {
+      let currentY = globalY
 
-    for (const [ministryId] of sortedMinistries) {
+      // Layer 0-2を順番に配置
+      for (const layer of [0, 1, 2]) {
+        const nodes = (layerMap.get(layer) || []).sort((a, b) => b.amount - a.amount)
+        for (const node of nodes) {
+          const height = calculateHeight(node.amount)
+          newNodes.push({
+            ...node,
+            height,
+            y: currentY + height / 2
+          })
+          currentY += height + nodeSpacing
+        }
+      }
+
+      // Layer 3 (事業) を配置
       const projects = projectsByMinistryForLayout.get(ministryId)
-      if (!projects || projects.length === 0) {
-        ministryProjectEndY.set(ministryId, layer3CurrentY)
-        continue
+      if (projects && projects.length > 0) {
+        const sortedProjects = projects.sort((a, b) => b.amount - a.amount)
+        for (const node of sortedProjects) {
+          const height = calculateHeight(node.amount)
+          newNodes.push({
+            ...node,
+            height,
+            y: currentY + height / 2
+          })
+          currentY += height + nodeSpacing
+        }
       }
 
-      const sortedProjects = projects.sort((a, b) => b.amount - a.amount)
-      let currentY = layer3CurrentY
+      // 「その他の事業」ノードを配置
+      const otherProjects = projectsByMinistry.get(ministryId)
+      if (otherProjects && otherProjects.length > 0) {
+        const totalAmount = otherProjects.reduce((sum, n) => sum + n.amount, 0)
+        const firstProject = otherProjects[0]
+        const otherHeight = calculateHeight(totalAmount)
 
-      for (const node of sortedProjects) {
-        const height = calculateHeight(node.amount)
-        newNodes.push({
-          ...node,
-          height,
-          y: currentY + height / 2
-        })
-        currentY += height + nodeSpacing
+        const otherNode: LayoutNode = {
+          id: `other_${ministryId}_layer3_dynamic`,
+          type: 'project',
+          layer: 3,
+          name: `その他の事業 (${otherProjects.length}件)`,
+          amount: totalAmount,
+          ministryId,
+          x: firstProject.x,
+          y: currentY + otherHeight / 2,
+          width: firstProject.width,
+          height: otherHeight,
+          metadata: {
+            isOther: true,
+            aggregatedCount: otherProjects.length,
+            aggregatedIds: otherProjects.map(n => n.id)
+          }
+        }
+        newNodes.push(otherNode)
+        otherProjectMap.set(ministryId, otherNode)
+        currentY += otherHeight + nodeSpacing
       }
 
-      ministryProjectEndY.set(ministryId, currentY)
-      layer3CurrentY = currentY
+      ministryEndY.set(ministryId, currentY)
+      globalY = currentY + ministrySectionPadding
     }
 
     // Layer 4 (支出先) の配置（レイヤーの最初は0から開始）
@@ -179,38 +193,6 @@ export function useDynamicTopN(
         y: recipientY + height / 2
       })
       recipientY += height + nodeSpacing
-    }
-
-    // 府省庁ごとの事業Otherノード（layer3CurrentYから連続配置）
-    for (const [ministryId, projects] of projectsByMinistry) {
-      if (projects.length > 0) {
-        const totalAmount = projects.reduce((sum, n) => sum + n.amount, 0)
-        const firstProject = projects[0]
-        const otherHeight = calculateHeight(totalAmount)
-
-        const otherNode: LayoutNode = {
-          id: `other_${ministryId}_layer3_dynamic`,
-          type: 'project',
-          layer: 3,
-          name: `その他の事業 (${projects.length}件)`,
-          amount: totalAmount,
-          ministryId,
-          x: firstProject.x,
-          y: layer3CurrentY + otherHeight / 2,
-          width: firstProject.width,
-          height: otherHeight,
-          metadata: {
-            isOther: true,
-            aggregatedCount: projects.length,
-            aggregatedIds: projects.map(n => n.id)
-          }
-        }
-        newNodes.push(otherNode)
-        otherProjectMap.set(ministryId, otherNode)
-
-        // 次の「その他」ノードのために更新
-        layer3CurrentY += otherHeight + nodeSpacing
-      }
     }
 
     // 支出先のOtherノード
