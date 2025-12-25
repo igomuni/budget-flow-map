@@ -6,6 +6,7 @@ import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
+import { generateSankeyPath } from '@/utils/sankeyPath'
 import type { LayoutData } from '@/types/layout'
 
 export function BudgetFlowMap() {
@@ -64,20 +65,24 @@ export function BudgetFlowMap() {
       }
     })
 
-    // エッジパスも同様にオフセット
+    // エッジパスを滑らかなベジェ曲線で再生成
     const spacedEdges = data.edges.map((edge) => {
       const sourceNode = spacedNodes.find(n => n.id === edge.sourceId)
       const targetNode = spacedNodes.find(n => n.id === edge.targetId)
 
       if (!sourceNode || !targetNode) return edge
 
-      // エッジの開始点と終了点を更新
+      // Sankey-style Bezier curve path
+      const path = generateSankeyPath(
+        sourceNode.x + sourceNode.width / 2,  // Right edge of source
+        sourceNode.y,                          // Center of source
+        targetNode.x - targetNode.width / 2,   // Left edge of target
+        targetNode.y                           // Center of target
+      )
+
       return {
         ...edge,
-        path: [
-          [sourceNode.x + sourceNode.width / 2, sourceNode.y],
-          [targetNode.x - targetNode.width / 2, targetNode.y]
-        ]
+        path
       }
     })
 

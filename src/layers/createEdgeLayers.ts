@@ -18,34 +18,35 @@ export function createEdgeLayers(
       // Path from pre-computed Bezier points
       getPath: (d) => d.path,
 
-      // Width based on flow value (wider for Sankey-style visualization)
-      getWidth: (d) => Math.max(d.width * 2, 1), // 2x wider for better visibility
-      widthMinPixels: 1,
-      widthMaxPixels: 100, // Allow wider flows
+      // Sankey principle: Flow width = actual flow amount
+      // edge.width is already calculated based on flow value
+      getWidth: (d) => d.width,
+      widthMinPixels: 0.1,
+      // No widthMaxPixels - let flows scale naturally like node heights
       widthScale: 1,
 
-      // Color with opacity variation for highlighting
+      // Sankey color: Semi-transparent fills that blend when overlapping
       getColor: (d) => {
-        // Default color (semi-transparent gray-blue)
-        const baseColor: [number, number, number] = [100, 130, 180]
+        // Neutral gray-blue that shows flow overlaps clearly
+        const sankeyBlue: [number, number, number] = [130, 160, 200]
 
         if (!hasActiveSelection) {
-          // Default 40% opacity (slightly higher for Sankey)
-          return [...baseColor, 102] as [number, number, number, number]
+          // Default: 30% opacity - allows seeing overlaps
+          return [...sankeyBlue, 77] as [number, number, number, number]
         }
 
         if (connectedEdges.has(d.id)) {
-          // Connected: 80% opacity, brighter
-          return [150, 180, 220, 204] as [number, number, number, number]
+          // Highlighted: 70% opacity, vibrant blue
+          return [80, 140, 255, 179] as [number, number, number, number]
         }
 
-        // Non-related: 15% opacity
-        return [...baseColor, 38] as [number, number, number, number]
+        // Background: 10% opacity (very faint)
+        return [...sankeyBlue, 26] as [number, number, number, number]
       },
 
-      // Rounded caps for smoother appearance
-      capRounded: true,
-      jointRounded: true,
+      // Flat caps: edges should align flush with node edges (Sankey standard)
+      capRounded: false,
+      jointRounded: true, // Keep rounded joints for smooth curves
 
       // Performance
       updateTriggers: {

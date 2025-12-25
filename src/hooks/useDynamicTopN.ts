@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { generateSankeyPath } from '@/utils/sankeyPath'
 import type { LayoutData, LayoutNode, LayoutEdge } from '@/types/layout'
 
 interface DynamicTopNOptions {
@@ -265,18 +266,29 @@ export function useDynamicTopN(
 
       if (existing) {
         existing.value += edge.value
-        existing.width = Math.max(0.5, Math.log10(existing.value + 1) * 2)
+        // Sankey principle: width is proportional to value
+        // Use threshold-relative scaling (same as node height)
+        existing.width = (existing.value / threshold) * MIN_HEIGHT
       } else {
         const sourceNode = newNodes.find(n => n.id === newSourceId)
         const targetNode = newNodes.find(n => n.id === newTargetId)
 
         if (sourceNode && targetNode) {
+          // Sankey principle: edge width proportional to flow amount
+          const edgeWidth = (edge.value / threshold) * MIN_HEIGHT
+
           const newEdge: LayoutEdge = {
             ...edge,
             id: `edge_${newSourceId}_${newTargetId}`,
             sourceId: newSourceId,
             targetId: newTargetId,
-            path: [[sourceNode.x + sourceNode.width/2, sourceNode.y], [targetNode.x - targetNode.width/2, targetNode.y]]
+            width: edgeWidth,
+            path: generateSankeyPath(
+              sourceNode.x + sourceNode.width / 2,
+              sourceNode.y,
+              targetNode.x - targetNode.width / 2,
+              targetNode.y
+            )
           }
           edgeMap.set(edgeKey, newEdge)
         }
