@@ -63,6 +63,27 @@ export function SearchPanel({ nodes, onNodeSelect }: SearchPanelProps) {
     }
   }, [isOpen])
 
+  // Global keyboard shortcut (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setIsOpen(prev => !prev)
+        if (!isOpen) {
+          setQuery('')
+        }
+      }
+      // Also close on Escape when open
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false)
+        setQuery('')
+      }
+    }
+
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [isOpen])
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {

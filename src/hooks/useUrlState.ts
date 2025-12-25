@@ -42,19 +42,40 @@ function parseUrlHash(): UrlState {
   return state
 }
 
+// Default values
+const DEFAULTS = {
+  topProjects: 500,
+  topRecipients: 1000,
+  threshold: 1e12,
+}
+
 /**
- * Build URL hash from state object
+ * Build URL hash from state object (only non-default values)
  */
 function buildUrlHash(state: UrlState): string {
   const params = new URLSearchParams()
 
-  if (state.x !== undefined) params.set('x', state.x.toFixed(0))
-  if (state.y !== undefined) params.set('y', state.y.toFixed(0))
-  if (state.zoom !== undefined) params.set('z', state.zoom.toFixed(2))
-  if (state.node) params.set('node', state.node)
-  if (state.topProjects !== undefined) params.set('tp', state.topProjects.toString())
-  if (state.topRecipients !== undefined) params.set('tr', state.topRecipients.toString())
-  if (state.threshold !== undefined) params.set('th', state.threshold.toFixed(0))
+  // Only include view state if defined
+  if (state.x !== undefined && state.y !== undefined) {
+    params.set('x', state.x.toFixed(0))
+    params.set('y', state.y.toFixed(0))
+  }
+  if (state.zoom !== undefined) {
+    params.set('z', state.zoom.toFixed(2))
+  }
+  if (state.node) {
+    params.set('node', state.node)
+  }
+  // Only include TopN settings if different from defaults
+  if (state.topProjects !== undefined && state.topProjects !== DEFAULTS.topProjects) {
+    params.set('tp', state.topProjects.toString())
+  }
+  if (state.topRecipients !== undefined && state.topRecipients !== DEFAULTS.topRecipients) {
+    params.set('tr', state.topRecipients.toString())
+  }
+  if (state.threshold !== undefined && state.threshold !== DEFAULTS.threshold) {
+    params.set('th', state.threshold.toFixed(0))
+  }
 
   return params.toString()
 }
@@ -86,22 +107,32 @@ export function useUrlState(options: UseUrlStateOptions) {
   } = options
 
   const initialLoadDone = useRef(false)
-  const isUpdatingUrl = useRef(false)
+  const isFromUrl = useRef(false)
+  const lastUrlHash = useRef('')
 
   // Load initial state from URL on mount
   useEffect(() => {
     if (initialLoadDone.current) return
+    initialLoadDone.current = true
 
     const urlState = parseUrlHash()
     if (Object.keys(urlState).length > 0) {
+      isFromUrl.current = true
+      lastUrlHash.current = window.location.hash
       onStateChange?.(urlState)
+      // Reset flag after a delay to allow state to settle
+      setTimeout(() => {
+        isFromUrl.current = false
+      }, 1000)
     }
-    initialLoadDone.current = true
   }, [onStateChange])
 
-  // Update URL when state changes (debounced)
+  // Update URL when state changes (debounced, skip if state came from URL)
   const updateUrl = useCallback(() => {
-    if (isUpdatingUrl.current) return
+    // Skip if we just loaded from URL
+    if (isFromUrl.current) return
+    // Skip if initial load not done
+    if (!initialLoadDone.current) return
 
     const state: UrlState = {}
 
@@ -116,26 +147,30 @@ export function useUrlState(options: UseUrlStateOptions) {
     const hash = buildUrlHash(state)
     const newUrl = hash ? `#${hash}` : window.location.pathname
 
-    // Only update if different
-    if (window.location.hash !== newUrl && newUrl !== '#') {
-      isUpdatingUrl.current = true
-      window.history.replaceState(null, '', newUrl)
-      isUpdatingUrl.current = false
+    // Only update if significantly different
+    if (lastUrlHash.current !== newUrl) {
+      lastUrlHash.current = newUrl
+      window.history.replaceState(null, '', newUrl || window.location.pathname)
     }
   }, [x, y, zoom, selectedNodeId, topProjects, topRecipients, threshold])
 
-  // Debounce URL updates
+  // Debounce URL updates with longer delay
   useEffect(() => {
-    const timer = setTimeout(updateUrl, 300)
+    const timer = setTimeout(updateUrl, 500)
     return () => clearTimeout(timer)
   }, [updateUrl])
 
   // Listen for hash changes (back/forward navigation)
   useEffect(() => {
     const handleHashChange = () => {
-      if (isUpdatingUrl.current) return
+      if (window.location.hash === lastUrlHash.current) return
+      isFromUrl.current = true
+      lastUrlHash.current = window.location.hash
       const urlState = parseUrlHash()
       onStateChange?.(urlState)
+      setTimeout(() => {
+        isFromUrl.current = false
+      }, 1000)
     }
 
     window.addEventListener('hashchange', handleHashChange)
