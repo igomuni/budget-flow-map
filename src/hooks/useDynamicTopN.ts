@@ -4,11 +4,16 @@ import type { LayoutData, LayoutNode, LayoutEdge } from '@/types/layout'
 interface DynamicTopNOptions {
   topProjects: number
   topRecipients: number
+  threshold: number // 円単位（1兆円 = 1e12）
 }
 
+// 定数
+// 閾値を基準に線形スケール: 閾値 = MIN_HEIGHT
+// 例: 閾値1000億円なら、1000億円 = 2px, 2000億円 = 4px, 1兆円 = 20px
+const MIN_HEIGHT = 2
+
 /**
- * 動的にTopNフィルタリングを適用するフック
- * クライアントサイドでノードを集約し、エッジを再構築します
+ * 動的にTopNフィルタリングと閾値ベースの高さ調整を適用するフック
  */
 export function useDynamicTopN(
   originalData: LayoutData | null,
@@ -17,7 +22,17 @@ export function useDynamicTopN(
   return useMemo(() => {
     if (!originalData) return null
 
-    const { topProjects, topRecipients } = options
+    const { topProjects, topRecipients, threshold } = options
+
+    // 閾値に基づいてノードの高さを計算
+    // 閾値未満: MIN_HEIGHT
+    // 閾値以上: (金額 / 閾値) × MIN_HEIGHT
+    const calculateHeight = (amount: number): number => {
+      if (amount < threshold) {
+        return MIN_HEIGHT
+      }
+      return (amount / threshold) * MIN_HEIGHT
+    }
 
     // Layer 3と4のノードを金額順にソート
     const projectNodes = originalData.nodes
@@ -36,9 +51,8 @@ export function useDynamicTopN(
     const aggregatedProjectIds = new Set(projectNodes.slice(topProjects).map(n => n.id))
     const aggregatedRecipientIds = new Set(recipientNodes.slice(topRecipients).map(n => n.id))
 
-    // 府省庁ごとの事業集約データ（事業は府省庁に依存）
+    // 府省庁ごとの事業集約データ
     const projectsByMinistry = new Map<string, LayoutNode[]>()
-
     for (const node of originalData.nodes) {
       if (node.layer === 3 && aggregatedProjectIds.has(node.id)) {
         if (!projectsByMinistry.has(node.ministryId)) {
@@ -48,26 +62,68 @@ export function useDynamicTopN(
       }
     }
 
-    // 支出先は府省庁横断的に集約（単一のOtherノード）
+    // 支出先は府省庁横断で集約
     const aggregatedRecipients = originalData.nodes.filter(n =>
       n.layer === 4 && aggregatedRecipientIds.has(n.id)
     )
 
-    // 新しいノードリスト作成
+    // 新しいノードリスト
     const newNodes: LayoutNode[] = []
-    const otherProjectMap = new Map<string, LayoutNode>() // ministryId -> otherProjectNode
+    const otherProjectMap = new Map<string, LayoutNode>()
     let otherRecipientNode: LayoutNode | null = null
 
-    // Layer 0-2を追加
+    const nodeSpacing = 1
+    const ministrySectionPadding = 5
+
+    // Layer 0-2を府省庁ごとにグループ化
+    const nodesByMinistryByLayer = new Map<string, Map<number, LayoutNode[]>>()
     for (const node of originalData.nodes) {
       if (node.layer <= 2) {
-        newNodes.push(node)
+        if (!nodesByMinistryByLayer.has(node.ministryId)) {
+          nodesByMinistryByLayer.set(node.ministryId, new Map())
+        }
+        const layerMap = nodesByMinistryByLayer.get(node.ministryId)!
+        if (!layerMap.has(node.layer)) {
+          layerMap.set(node.layer, [])
+        }
+        layerMap.get(node.layer)!.push(node)
       }
     }
 
-    // Layer 3 (事業): 府省庁ごとにTopN内のノードを金額降順で並べ替え、Y座標を再計算
-    const projectsByMinistryForLayout = new Map<string, LayoutNode[]>()
+    // 府省庁を金額順にソート
+    const sortedMinistries = Array.from(nodesByMinistryByLayer.entries())
+      .sort(([, aMap], [, bMap]) => {
+        const aMinistry = (aMap.get(0) || [])[0]
+        const bMinistry = (bMap.get(0) || [])[0]
+        return (bMinistry?.amount || 0) - (aMinistry?.amount || 0)
+      })
 
+    // Layer 0-2のノード配置
+    const ministryEndY = new Map<string, number>()
+    let globalY = 0
+
+    for (const [ministryId, layerMap] of sortedMinistries) {
+      let currentY = globalY
+
+      for (const layer of [0, 1, 2]) {
+        const nodes = (layerMap.get(layer) || []).sort((a, b) => b.amount - a.amount)
+        for (const node of nodes) {
+          const height = calculateHeight(node.amount)
+          newNodes.push({
+            ...node,
+            height,
+            y: currentY + height / 2
+          })
+          currentY += height + nodeSpacing
+        }
+      }
+
+      ministryEndY.set(ministryId, currentY)
+      globalY = currentY + ministrySectionPadding
+    }
+
+    // Layer 3 (事業) の配置
+    const projectsByMinistryForLayout = new Map<string, LayoutNode[]>()
     for (const node of originalData.nodes) {
       if (node.layer === 3 && keptProjectIds.has(node.id)) {
         if (!projectsByMinistryForLayout.has(node.ministryId)) {
@@ -77,64 +133,54 @@ export function useDynamicTopN(
       }
     }
 
-    const projectSpacing = 1 // ノード間のスペーシング
-    const otherGap = 3 // 「その他」ノードの前の間隔（通常スペーシングの倍数）
-    const ministryProjectYPositions = new Map<string, number>() // 府省庁ごとの現在Y座標を追跡
+    const ministryProjectEndY = new Map<string, number>()
 
-    // 府省庁ごとに事業ノードをソートして配置
-    for (const [ministryId, projects] of projectsByMinistryForLayout) {
-      // 金額降順でソート
+    for (const [ministryId] of sortedMinistries) {
+      const projects = projectsByMinistryForLayout.get(ministryId)
+      if (!projects || projects.length === 0) {
+        ministryProjectEndY.set(ministryId, ministryEndY.get(ministryId) || 0)
+        continue
+      }
+
       const sortedProjects = projects.sort((a, b) => b.amount - a.amount)
+      let currentY = ministryEndY.get(ministryId) || 0
 
-      // この府省庁の開始Y座標（最初のノードのY座標を使用）
-      let currentY = sortedProjects.length > 0 ? sortedProjects[0].y - sortedProjects[0].height / 2 : 0
-
-      const repositionedProjects = sortedProjects.map(node => {
-        const newNode = {
+      for (const node of sortedProjects) {
+        const height = calculateHeight(node.amount)
+        newNodes.push({
           ...node,
-          y: currentY + node.height / 2 // 中心座標
-        }
-        currentY += node.height + projectSpacing
-        return newNode
-      })
+          height,
+          y: currentY + height / 2
+        })
+        currentY += height + nodeSpacing
+      }
 
-      newNodes.push(...repositionedProjects)
-
-      // この府省庁の「その他」ノードの配置用にcurrentYを保存
-      // 「その他」ノードの前に追加の間隔を設ける
-      ministryProjectYPositions.set(ministryId, currentY + projectSpacing * otherGap)
+      ministryProjectEndY.set(ministryId, currentY)
     }
 
-    // Layer 4 (支出先): TopN内のノードを金額降順で並べ替え、Y座標を再計算
+    // Layer 4 (支出先) の配置
     const keptRecipientNodes = originalData.nodes
       .filter(n => n.layer === 4 && keptRecipientIds.has(n.id))
       .sort((a, b) => b.amount - a.amount)
 
-    // 支出先のY座標を金額降順に再配置
-    const recipientStartY = 0 // 開始Y座標
-    const recipientSpacing = 3 // ノード間のスペーシング
-    let currentY = recipientStartY
-
-    const repositionedRecipients = keptRecipientNodes.map(node => {
-      const newNode = {
+    let recipientY = 0
+    for (const node of keptRecipientNodes) {
+      const height = calculateHeight(node.amount)
+      newNodes.push({
         ...node,
-        y: currentY + node.height / 2 // 中心座標
-      }
-      currentY += node.height + recipientSpacing
-      return newNode
-    })
+        height,
+        y: recipientY + height / 2
+      })
+      recipientY += height + nodeSpacing
+    }
 
-    newNodes.push(...repositionedRecipients)
-
-    // 府省庁ごとの事業Otherノードを作成（各府省庁セクションの最下位に配置）
+    // 府省庁ごとの事業Otherノード
     for (const [ministryId, projects] of projectsByMinistry) {
       if (projects.length > 0) {
         const totalAmount = projects.reduce((sum, n) => sum + n.amount, 0)
         const firstProject = projects[0]
-        const otherHeight = Math.max(2, Math.log10(totalAmount + 1) * 3)
-
-        // 府省庁ごとの現在Y座標を取得（保存されている位置）
-        const otherY = ministryProjectYPositions.get(ministryId) || firstProject.y
+        const otherHeight = Math.max(MIN_HEIGHT, Math.log10(totalAmount + 1) * 3)
+        const otherY = ministryProjectEndY.get(ministryId) || firstProject.y
 
         const otherNode: LayoutNode = {
           id: `other_${ministryId}_layer3_dynamic`,
@@ -144,7 +190,7 @@ export function useDynamicTopN(
           amount: totalAmount,
           ministryId,
           x: firstProject.x,
-          y: otherY + otherHeight / 2, // 最下位に配置
+          y: otherY + otherHeight / 2,
           width: firstProject.width,
           height: otherHeight,
           metadata: {
@@ -158,12 +204,11 @@ export function useDynamicTopN(
       }
     }
 
-    // 支出先の単一Otherノードを作成（府省庁横断）
-    // Y座標は全支出先の最下位（currentYの続き）に配置
+    // 支出先のOtherノード
     if (aggregatedRecipients.length > 0) {
       const totalAmount = aggregatedRecipients.reduce((sum, n) => sum + n.amount, 0)
       const firstRecipient = aggregatedRecipients[0]
-      const otherHeight = Math.max(2, Math.log10(totalAmount + 1) * 2)
+      const otherHeight = Math.max(MIN_HEIGHT, Math.log10(totalAmount + 1) * 2)
 
       otherRecipientNode = {
         id: `other_recipients_layer4_dynamic`,
@@ -171,9 +216,9 @@ export function useDynamicTopN(
         layer: 4,
         name: `その他の支出先 (${aggregatedRecipients.length}件)`,
         amount: totalAmount,
-        ministryId: '', // 府省庁に依存しない
+        ministryId: '',
         x: firstRecipient.x,
-        y: currentY + otherHeight / 2, // 最下位に配置
+        y: recipientY + otherHeight / 2,
         width: firstRecipient.width,
         height: otherHeight,
         metadata: {
@@ -187,13 +232,12 @@ export function useDynamicTopN(
 
     // エッジを再構築
     const newEdges: LayoutEdge[] = []
-    const edgeMap = new Map<string, LayoutEdge>() // key: sourceId->targetId
+    const edgeMap = new Map<string, LayoutEdge>()
 
     for (const edge of originalData.edges) {
       let newSourceId = edge.sourceId
       let newTargetId = edge.targetId
 
-      // ソース（事業）が集約された場合 → 府省庁ごとのOtherノード
       if (aggregatedProjectIds.has(edge.sourceId)) {
         const sourceNode = originalData.nodes.find(n => n.id === edge.sourceId)
         if (sourceNode) {
@@ -202,7 +246,6 @@ export function useDynamicTopN(
         }
       }
 
-      // ターゲット（事業）が集約された場合 → 府省庁ごとのOtherノード
       if (aggregatedProjectIds.has(edge.targetId)) {
         const targetNode = originalData.nodes.find(n => n.id === edge.targetId)
         if (targetNode) {
@@ -211,14 +254,12 @@ export function useDynamicTopN(
         }
       }
 
-      // ターゲット（支出先）が集約された場合 → 単一のOtherノード
       if (aggregatedRecipientIds.has(edge.targetId)) {
         if (otherRecipientNode) {
           newTargetId = otherRecipientNode.id
         }
       }
 
-      // エッジを統合
       const edgeKey = `${newSourceId}->${newTargetId}`
       const existing = edgeMap.get(edgeKey)
 
@@ -273,5 +314,5 @@ export function useDynamicTopN(
         maxY: Math.ceil(maxY),
       }
     }
-  }, [originalData, options.topProjects, options.topRecipients])
+  }, [originalData, options.topProjects, options.topRecipients, options.threshold])
 }

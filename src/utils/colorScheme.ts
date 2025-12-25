@@ -66,19 +66,6 @@ export function getNodeColor(node: LayoutNode): [number, number, number, number]
 }
 
 /**
- * Get the radius for a node based on layer and amount
- */
-export function getNodeRadius(node: LayoutNode): number {
-  // Base radius varies by layer
-  const baseRadius = [30, 20, 15, 10, 8][node.layer]
-
-  // Scale by amount (log scale to handle large differences)
-  const amountScale = node.amount > 0 ? Math.log10(node.amount + 1) / 12 : 0.1
-
-  return Math.max(baseRadius * amountScale, 3)
-}
-
-/**
  * Get edge color based on source ministry (RGBA)
  */
 export function getEdgeColor(ministryId: string): [number, number, number, number] {

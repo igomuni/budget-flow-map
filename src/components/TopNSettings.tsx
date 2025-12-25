@@ -3,26 +3,46 @@ import { useState } from 'react'
 interface TopNSettingsProps {
   topProjects: number
   topRecipients: number
+  threshold: number
   onTopProjectsChange: (value: number) => void
   onTopRecipientsChange: (value: number) => void
+  onThresholdChange: (value: number) => void
 }
 
 export function TopNSettings({
   topProjects,
   topRecipients,
+  threshold,
   onTopProjectsChange,
-  onTopRecipientsChange
+  onTopRecipientsChange,
+  onThresholdChange
 }: TopNSettingsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [draftProjects, setDraftProjects] = useState(topProjects)
   const [draftRecipients, setDraftRecipients] = useState(topRecipients)
+  const [draftThreshold, setDraftThreshold] = useState(threshold)
 
   // 適用ボタンが有効かどうか（値が変更されているか）
-  const hasChanges = draftProjects !== topProjects || draftRecipients !== topRecipients
+  const hasChanges = draftProjects !== topProjects || draftRecipients !== topRecipients || draftThreshold !== threshold
 
   const handleApply = () => {
     onTopProjectsChange(draftProjects)
     onTopRecipientsChange(draftRecipients)
+    onThresholdChange(draftThreshold)
+  }
+
+  // 閾値を表示（円単位から適切な単位に変換）
+  const formatThreshold = (value: number) => {
+    if (value >= 1e12) {
+      return `${(value / 1e12).toFixed(1)}兆円`
+    }
+    if (value >= 1e8) {
+      return `${(value / 1e8).toFixed(0)}億円`
+    }
+    if (value >= 1e4) {
+      return `${(value / 1e4).toFixed(0)}万円`
+    }
+    return `${value.toFixed(0)}円`
   }
 
   if (!isOpen) {
@@ -101,6 +121,29 @@ export function TopNSettings({
           <div className="flex justify-between text-[10px] text-gray-400 mt-1">
             <span>100</span>
             <span>5000</span>
+          </div>
+        </div>
+
+        {/* Threshold slider */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            閾値（最小高さ適用） - {formatThreshold(draftThreshold)}
+          </label>
+          <input
+            type="range"
+            min={0}
+            max={13}
+            step={1}
+            value={Math.log10(draftThreshold)}
+            onChange={(e) => setDraftThreshold(10 ** parseFloat(e.target.value))}
+            className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-orange-500"
+          />
+          <div className="flex justify-between text-[10px] text-gray-400 mt-1">
+            <span>1円</span>
+            <span>10兆円</span>
+          </div>
+          <div className="text-[10px] text-gray-500 mt-1">
+            閾値未満のノードは最小高さ（2px）で表示
           </div>
         </div>
 

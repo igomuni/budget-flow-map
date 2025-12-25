@@ -1,15 +1,15 @@
-import { ScatterplotLayer } from '@deck.gl/layers'
+import { PolygonLayer } from '@deck.gl/layers'
 import type { LayoutNode } from '@/types/layout'
-import { getNodeColor, getNodeRadius } from '@/utils/colorScheme'
+import { getNodeColor } from '@/utils/colorScheme'
 
 /**
- * Create ScatterplotLayers for nodes, grouped by layer type
+ * Create PolygonLayers for nodes as vertical bars (Sankey-style)
  */
 export function createNodeLayers(
   nodes: LayoutNode[],
   hoveredNodeId: string | null,
   selectedNodeId: string | null
-): ScatterplotLayer<LayoutNode>[] {
+): PolygonLayer<LayoutNode>[] {
   // Group nodes by layer
   const nodesByLayer = new Map<number, LayoutNode[]>()
 
@@ -20,23 +20,27 @@ export function createNodeLayers(
   }
 
   // Create a layer for each group
-  const layers: ScatterplotLayer<LayoutNode>[] = []
+  const layers: PolygonLayer<LayoutNode>[] = []
 
   for (const [layerIndex, layerNodes] of nodesByLayer) {
     layers.push(
-      new ScatterplotLayer<LayoutNode>({
+      new PolygonLayer<LayoutNode>({
         id: `nodes-layer-${layerIndex}`,
         data: layerNodes,
         pickable: true,
 
-        // Position
-        getPosition: (d) => [d.x, d.y],
-
-        // Size
-        getRadius: (d) => getNodeRadius(d),
-        radiusMinPixels: 2,
-        radiusMaxPixels: 50,
-        radiusScale: 1,
+        // Create rectangular polygon for each node
+        // Rectangle centered at (x, y) with width and height
+        getPolygon: (d) => {
+          const halfWidth = d.width / 2
+          const halfHeight = d.height / 2
+          return [
+            [d.x - halfWidth, d.y - halfHeight],
+            [d.x + halfWidth, d.y - halfHeight],
+            [d.x + halfWidth, d.y + halfHeight],
+            [d.x - halfWidth, d.y + halfHeight],
+          ]
+        },
 
         // Fill color with hover/selection highlighting
         getFillColor: (d) => {
@@ -52,7 +56,9 @@ export function createNodeLayers(
         // Stroke
         stroked: true,
         getLineColor: [255, 255, 255, 100],
+        getLineWidth: 1,
         lineWidthMinPixels: 1,
+        lineWidthMaxPixels: 2,
 
         // Performance: only update colors when selection changes
         updateTriggers: {

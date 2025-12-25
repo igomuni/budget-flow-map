@@ -12,13 +12,14 @@ export function BudgetFlowMap() {
   const { data: rawData, loading, error } = useLayoutData()
   const [viewState, setViewState] = useState<OrthographicViewState | null>(null)
   const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
-  const [nodeSpacingX, setNodeSpacingX] = useState(1)
-  const [nodeSpacingY, setNodeSpacingY] = useState(1)
+  const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
+  const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
   const [topProjects, setTopProjects] = useState(500)
   const [topRecipients, setTopRecipients] = useState(1000)
+  const [threshold, setThreshold] = useState(1e12) // 1兆円 = 1,000,000,000,000円
 
   // 動的TopNフィルタリングを適用
-  const data = useDynamicTopN(rawData, { topProjects, topRecipients })
+  const data = useDynamicTopN(rawData, { topProjects, topRecipients, threshold })
 
   const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
     setViewState(vs)
@@ -38,43 +39,65 @@ export function BudgetFlowMap() {
     })
   }, [])
 
-  // Scale layout data based on spacing settings
+  // Add spacing to layout data (px単位で加算)
   const scaledData = useMemo((): LayoutData | null => {
     if (!data) return null
 
-    // Calculate center of original bounds
-    const centerX = (data.bounds.minX + data.bounds.maxX) / 2
-    const centerY = (data.bounds.minY + data.bounds.maxY) / 2
+    // nodeSpacingX/Yはpx単位でノード間に追加する間隔
+    // 各レイヤーごとにX方向の間隔を追加
+    const layerXOffsets = new Map<number, number>()
+    for (let layer = 0; layer <= 4; layer++) {
+      layerXOffsets.set(layer, layer * nodeSpacingX)
+    }
 
-    // Scale nodes around center
-    const scaledNodes = data.nodes.map((node) => ({
-      ...node,
-      x: centerX + (node.x - centerX) * nodeSpacingX,
-      y: centerY + (node.y - centerY) * nodeSpacingY,
-    }))
+    // Y方向は累積的に間隔を追加
+    const spacedNodes = data.nodes.map((node, index) => {
+      const prevNodes = data.nodes.slice(0, index).filter(n => n.layer === node.layer)
+      const yOffset = prevNodes.length * nodeSpacingY
 
-    // Scale edges (Bezier control points)
-    const scaledEdges = data.edges.map((edge) => ({
-      ...edge,
-      path: edge.path.map(([x, y]) => [
-        centerX + (x - centerX) * nodeSpacingX,
-        centerY + (y - centerY) * nodeSpacingY,
-      ] as [number, number]),
-    }))
+      return {
+        ...node,
+        x: node.x + (layerXOffsets.get(node.layer) || 0),
+        y: node.y + yOffset,
+      }
+    })
 
-    // Scale bounds
-    const scaledBounds = {
-      minX: centerX + (data.bounds.minX - centerX) * nodeSpacingX,
-      maxX: centerX + (data.bounds.maxX - centerX) * nodeSpacingX,
-      minY: centerY + (data.bounds.minY - centerY) * nodeSpacingY,
-      maxY: centerY + (data.bounds.maxY - centerY) * nodeSpacingY,
+    // エッジパスも同様にオフセット
+    const spacedEdges = data.edges.map((edge) => {
+      const sourceNode = spacedNodes.find(n => n.id === edge.sourceId)
+      const targetNode = spacedNodes.find(n => n.id === edge.targetId)
+
+      if (!sourceNode || !targetNode) return edge
+
+      // エッジの開始点と終了点を更新
+      return {
+        ...edge,
+        path: [
+          [sourceNode.x + sourceNode.width / 2, sourceNode.y],
+          [targetNode.x - targetNode.width / 2, targetNode.y]
+        ]
+      }
+    })
+
+    // バウンディングボックス再計算
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const node of spacedNodes) {
+      minX = Math.min(minX, node.x - node.width / 2)
+      maxX = Math.max(maxX, node.x + node.width / 2)
+      minY = Math.min(minY, node.y - node.height / 2)
+      maxY = Math.max(maxY, node.y + node.height / 2)
     }
 
     return {
       ...data,
-      nodes: scaledNodes,
-      edges: scaledEdges,
-      bounds: scaledBounds,
+      nodes: spacedNodes,
+      edges: spacedEdges,
+      bounds: {
+        minX: Math.floor(minX),
+        maxX: Math.ceil(maxX),
+        minY: Math.floor(minY),
+        maxY: Math.ceil(maxY),
+      }
     }
   }, [data, nodeSpacingX, nodeSpacingY])
 
@@ -174,8 +197,10 @@ export function BudgetFlowMap() {
       <TopNSettings
         topProjects={topProjects}
         topRecipients={topRecipients}
+        threshold={threshold}
         onTopProjectsChange={setTopProjects}
         onTopRecipientsChange={setTopRecipients}
+        onThresholdChange={setThreshold}
       />
       {/* Map Controls */}
       <MapControls

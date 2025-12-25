@@ -117,19 +117,22 @@ const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング
 const DEFAULT_TOP_PROJECTS = 500  // Layer 3: 事業
 const DEFAULT_TOP_RECIPIENTS = 1000 // Layer 4: 支出先
 
-// 金額→高さの変換（対数スケール、レイヤーに応じて調整）
+// 閾値（1兆円 = 1,000,000百万円）
+const AMOUNT_THRESHOLD = 1000000 // 百万円単位
+
+// 金額→高さの変換（閾値以下は最小高さ、閾値以上は線形スケール、最大高さ制限なし）
 function amountToHeight(amount: number, maxAmount: number, layer: number): number {
   if (amount <= 0) return MIN_NODE_HEIGHT
-  const logScale = Math.log10(amount + 1) / Math.log10(maxAmount + 1)
 
-  // レイヤーごとに最大高さを調整
-  // Layer 0(府省庁): 大きく表示
-  // Layer 1-3: 中程度
-  // Layer 4(支出先): 非常に小さく（数が多いため）
-  const maxHeight = layer === 0 ? 40 :
-                    layer === 4 ? 4 :  // 支出先は最小限
-                    20
-  return Math.max(MIN_NODE_HEIGHT, logScale * maxHeight)
+  // 閾値以下は最小高さ
+  if (amount <= AMOUNT_THRESHOLD) {
+    return MIN_NODE_HEIGHT
+  }
+
+  // 閾値以上は線形スケール（最大高さ制限なし）
+  // 金額に直接比例（スケール係数で調整）
+  const scale = 0.000002 // 1兆円 = 2px → 10兆円 = 20px
+  return Math.max(MIN_NODE_HEIGHT, amount * scale)
 }
 
 // エッジ幅の計算（対数スケール）

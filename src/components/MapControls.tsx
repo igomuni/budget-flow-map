@@ -54,14 +54,13 @@ export function MapControls({
 
   // Reset spacing to default
   const handleResetSpacing = useCallback(() => {
-    onNodeSpacingXChange(1)
-    onNodeSpacingYChange(1)
+    onNodeSpacingXChange(0)
+    onNodeSpacingYChange(0)
   }, [onNodeSpacingXChange, onNodeSpacingYChange])
 
   // Format spacing value for display
   const formatSpacing = (value: number) => {
-    if (value >= 10) return `${Math.round(value)}x`
-    return `${value.toFixed(1)}x`
+    return `${Math.round(value)}px`
   }
 
   return (
@@ -118,15 +117,15 @@ export function MapControls({
         </svg>
         <input
           type="range"
-          min={0.1}
-          max={1000}
-          step={0.1}
+          min={0}
+          max={100}
+          step={1}
           value={nodeSpacingX}
           onChange={handleSpacingXSlider}
           className="w-20 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
           title={`Horizontal spacing: ${formatSpacing(nodeSpacingX)}`}
         />
-        <span className="text-xs text-gray-500 w-8 text-right tabular-nums">{formatSpacing(nodeSpacingX)}</span>
+        <span className="text-xs text-gray-500 w-12 text-right tabular-nums">{formatSpacing(nodeSpacingX)}</span>
       </div>
 
       {/* Vertical spacing */}
@@ -136,15 +135,15 @@ export function MapControls({
         </svg>
         <input
           type="range"
-          min={0.1}
-          max={1000}
-          step={0.1}
+          min={0}
+          max={100}
+          step={1}
           value={nodeSpacingY}
           onChange={handleSpacingYSlider}
           className="w-20 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
           title={`Vertical spacing: ${formatSpacing(nodeSpacingY)}`}
         />
-        <span className="text-xs text-gray-500 w-8 text-right tabular-nums">{formatSpacing(nodeSpacingY)}</span>
+        <span className="text-xs text-gray-500 w-12 text-right tabular-nums">{formatSpacing(nodeSpacingY)}</span>
         <button
           onClick={handleResetSpacing}
           className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"

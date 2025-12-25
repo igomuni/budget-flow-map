@@ -203,7 +203,7 @@ export function Minimap({
     ctx.fillStyle = '#1a1a2e'
     ctx.fillRect(0, 0, width, canvasHeight)
 
-    // Draw nodes as tiny dots, colored by layer
+    // Draw nodes as tiny rectangles (Sankey-style), colored by layer
     const layerColors = [
       '#4ecdc4', // ministry
       '#45b7d1', // bureau
@@ -213,10 +213,18 @@ export function Minimap({
     ]
 
     for (const node of nodes) {
-      const [x, y] = worldToMinimap(node.x, node.y)
+      // Get scaled node dimensions
+      const nodeWidth = node.width * scale
+      const nodeHeight = node.height * scale
+      const [centerX, centerY] = worldToMinimap(node.x, node.y)
+
       ctx.fillStyle = layerColors[node.layer] || '#ffffff'
-      const size = node.layer === 0 ? 4 : node.layer === 4 ? 0.5 : 1.5
-      ctx.fillRect(x - size / 2, y - size / 2, size, size)
+      ctx.fillRect(
+        centerX - nodeWidth / 2,
+        centerY - nodeHeight / 2,
+        Math.max(nodeWidth, 0.5), // Minimum 0.5px width for visibility
+        Math.max(nodeHeight, 0.5) // Minimum 0.5px height for visibility
+      )
     }
 
     // Draw viewport rectangle
