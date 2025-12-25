@@ -40,8 +40,8 @@ export function createEdgeLayers(
           return [80, 140, 255, 179] as [number, number, number, number]
         }
 
-        // Background: 10% opacity (very faint)
-        return [...sankeyBlue, 26] as [number, number, number, number]
+        // Background: 15% opacity (more transparent)
+        return [...sankeyBlue, 38] as [number, number, number, number]
       },
 
       // Flat caps: edges should align flush with node edges (Sankey standard)

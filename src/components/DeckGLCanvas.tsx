@@ -72,18 +72,92 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, ex
     return map
   }, [layoutData.nodes])
 
-  // Create connected edges lookup for highlighting
-  const connectedEdges = useMemo(() => {
+  // Create connected edges and nodes lookup for highlighting
+  // Hover: only direct connections
+  // Selection: all ancestors and descendants
+  const { connectedEdges, connectedNodeIds } = useMemo(() => {
     const activeId = hoveredNodeId || selectedNodeId
-    if (!activeId) return new Set<string>()
+    if (!activeId) return { connectedEdges: new Set<string>(), connectedNodeIds: new Set<string>() }
 
-    const connected = new Set<string>()
+    const edges = new Set<string>()
+    const nodeIds = new Set<string>()
+
+    // Add the active node itself
+    nodeIds.add(activeId)
+
+    // For hover: only show direct connections
+    if (hoveredNodeId && !selectedNodeId) {
+      for (const edge of layoutData.edges) {
+        if (edge.sourceId === activeId || edge.targetId === activeId) {
+          edges.add(edge.id)
+          nodeIds.add(edge.sourceId)
+          nodeIds.add(edge.targetId)
+        }
+      }
+      return { connectedEdges: edges, connectedNodeIds: nodeIds }
+    }
+
+    // For selection: show all ancestors and descendants (BFS traversal)
+    // Build adjacency maps for traversal
+    const sourceToTargets = new Map<string, string[]>()
+    const targetToSources = new Map<string, string[]>()
+
     for (const edge of layoutData.edges) {
-      if (edge.sourceId === activeId || edge.targetId === activeId) {
-        connected.add(edge.id)
+      // Forward edges (source -> target)
+      if (!sourceToTargets.has(edge.sourceId)) {
+        sourceToTargets.set(edge.sourceId, [])
+      }
+      sourceToTargets.get(edge.sourceId)!.push(edge.targetId)
+
+      // Backward edges (target -> source)
+      if (!targetToSources.has(edge.targetId)) {
+        targetToSources.set(edge.targetId, [])
+      }
+      targetToSources.get(edge.targetId)!.push(edge.sourceId)
+    }
+
+    // BFS to find all descendants (downstream)
+    const descendantsQueue = [activeId]
+    const visitedDescendants = new Set<string>([activeId])
+
+    while (descendantsQueue.length > 0) {
+      const currentId = descendantsQueue.shift()!
+      const targets = sourceToTargets.get(currentId) || []
+
+      for (const targetId of targets) {
+        if (!visitedDescendants.has(targetId)) {
+          visitedDescendants.add(targetId)
+          nodeIds.add(targetId)
+          descendantsQueue.push(targetId)
+        }
       }
     }
-    return connected
+
+    // BFS to find all ancestors (upstream)
+    const ancestorsQueue = [activeId]
+    const visitedAncestors = new Set<string>([activeId])
+
+    while (ancestorsQueue.length > 0) {
+      const currentId = ancestorsQueue.shift()!
+      const sources = targetToSources.get(currentId) || []
+
+      for (const sourceId of sources) {
+        if (!visitedAncestors.has(sourceId)) {
+          visitedAncestors.add(sourceId)
+          nodeIds.add(sourceId)
+          ancestorsQueue.push(sourceId)
+        }
+      }
+    }
+
+    // Collect all edges connecting the found nodes
+    for (const edge of layoutData.edges) {
+      if (nodeIds.has(edge.sourceId) && nodeIds.has(edge.targetId)) {
+        edges.add(edge.id)
+      }
+    }
+
+    return { connectedEdges: edges, connectedNodeIds: nodeIds }
   }, [layoutData.edges, hoveredNodeId, selectedNodeId])
 
   // Create layers
@@ -93,16 +167,17 @@ export function DeckGLCanvas({ layoutData, onViewStateChange, externalTarget, ex
       ...createEdgeLayers(
         layoutData.edges,
         connectedEdges,
-        !!(hoveredNodeId || selectedNodeId)
+        !!(hoveredNodeId || selectedNodeId)  // Both hover and selection highlight edges
       ),
       // Nodes on top
       ...createNodeLayers(
         layoutData.nodes,
         hoveredNodeId,
-        selectedNodeId
+        selectedNodeId,
+        connectedNodeIds
       ),
     ]
-  }, [layoutData, hoveredNodeId, selectedNodeId, connectedEdges])
+  }, [layoutData, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
 
   // Handle hover
   const handleHover = useCallback(

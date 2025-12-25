@@ -8,8 +8,10 @@ import { getNodeColor } from '@/utils/colorScheme'
 export function createNodeLayers(
   nodes: LayoutNode[],
   hoveredNodeId: string | null,
-  selectedNodeId: string | null
+  selectedNodeId: string | null,
+  connectedNodeIds: Set<string>
 ): PolygonLayer<LayoutNode>[] {
+  const hasActiveSelection = !!(hoveredNodeId || selectedNodeId)
   // Group nodes by layer
   const nodesByLayer = new Map<number, LayoutNode[]>()
 
@@ -42,27 +44,45 @@ export function createNodeLayers(
           ]
         },
 
-        // Fill color with hover/selection highlighting
+        // Fill color with hover highlighting (selection doesn't change fill)
         getFillColor: (d) => {
-          if (d.id === selectedNodeId) {
-            return [255, 200, 0, 255] // Gold for selected
-          }
+          const baseColor = getNodeColor(d)
+
           if (d.id === hoveredNodeId) {
             return [255, 255, 255, 255] // White for hovered
           }
-          return getNodeColor(d)
+
+          // Reduce opacity for non-connected nodes when there's an active selection
+          if (hasActiveSelection && !connectedNodeIds.has(d.id)) {
+            // Make background nodes more transparent
+            return [baseColor[0], baseColor[1], baseColor[2], 51] // 20% opacity
+          }
+
+          return baseColor
         },
 
-        // Stroke
+        // Stroke - highlight selected node with bright stroke
         stroked: true,
-        getLineColor: [255, 255, 255, 100],
-        getLineWidth: 1,
+        getLineColor: (d) => {
+          if (d.id === selectedNodeId) {
+            return [255, 200, 0, 255] as [number, number, number, number] // Bright gold stroke for selected
+          }
+          return [255, 255, 255, 100] as [number, number, number, number] // Default white stroke
+        },
+        getLineWidth: (d) => {
+          if (d.id === selectedNodeId) {
+            return 3 // Thicker stroke for selected
+          }
+          return 1
+        },
         lineWidthMinPixels: 1,
-        lineWidthMaxPixels: 2,
+        lineWidthMaxPixels: 3,
 
         // Performance: only update colors when selection changes
         updateTriggers: {
-          getFillColor: [hoveredNodeId, selectedNodeId],
+          getFillColor: [hoveredNodeId, selectedNodeId, connectedNodeIds],
+          getLineColor: [selectedNodeId],
+          getLineWidth: [selectedNodeId],
         },
       })
     )
