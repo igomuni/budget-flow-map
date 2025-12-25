@@ -46,10 +46,21 @@ export function BudgetFlowMap() {
     if (!data) return null
 
     // nodeSpacingX/Yはpx単位でノード間に追加する間隔
-    // 各レイヤーごとにX方向の間隔を追加
+    // 各レイヤー間にnodeSpacingXを均等に追加（累積ではなく実際の間隔）
+    // まず元のX座標からレイヤーごとの基準位置を取得
+    const originalLayerX = new Map<number, number>()
+    for (const node of data.nodes) {
+      if (!originalLayerX.has(node.layer)) {
+        originalLayerX.set(node.layer, node.x)
+      }
+    }
+
+    // レイヤー間の実際の幅を計算（nodeWidth考慮）
     const layerXOffsets = new Map<number, number>()
-    for (let layer = 0; layer <= 4; layer++) {
-      layerXOffsets.set(layer, layer * nodeSpacingX)
+    layerXOffsets.set(0, 0) // Layer 0は移動なし
+    for (let layer = 1; layer <= 4; layer++) {
+      // 前のレイヤーのオフセット + nodeSpacingX
+      layerXOffsets.set(layer, layerXOffsets.get(layer - 1)! + nodeSpacingX)
     }
 
     // Y方向は累積的に間隔を追加

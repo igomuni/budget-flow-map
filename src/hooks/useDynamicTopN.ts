@@ -73,7 +73,8 @@ export function useDynamicTopN(
     const otherProjectMap = new Map<string, LayoutNode>()
     let otherRecipientNode: LayoutNode | null = null
 
-    const nodeSpacing = 1
+    // nodeSpacingは常に0（BudgetFlowMapでnodeSpacingYを適用）
+    const nodeSpacing = 0
 
     // Layer 0-2を府省庁ごとにグループ化
     const nodesByMinistryByLayer = new Map<string, Map<number, LayoutNode[]>>()
@@ -122,24 +123,109 @@ export function useDynamicTopN(
     for (const [ministryId, layerMap] of sortedMinistries) {
       const layerEndY = new Map<number, number>()
 
-      // Layer 0-2を配置（各レイヤーは現在位置から開始）
-      for (const layer of [0, 1, 2]) {
-        let currentY = layerCurrentY.get(layer)!
-        const nodes = (layerMap.get(layer) || []).sort((a, b) => b.amount - a.amount)
+      // Layer 0 (府省) を配置
+      let layer0Y = layerCurrentY.get(0)!
+      const ministryNodes = (layerMap.get(0) || []).sort((a, b) => b.amount - a.amount)
+      for (const node of ministryNodes) {
+        const height = calculateHeight(node.amount)
+        newNodes.push({
+          ...node,
+          height,
+          y: layer0Y + height / 2
+        })
+        layer0Y += height + nodeSpacing
+      }
+      layerEndY.set(0, layer0Y)
+      layerCurrentY.set(0, layer0Y)
 
-        for (const node of nodes) {
+      // Layer 1 (局) を配置し、各局のY位置を記録
+      let layer1Y = layerCurrentY.get(1)!
+      const bureauNodes = (layerMap.get(1) || []).sort((a, b) => b.amount - a.amount)
+      const bureauYPositions = new Map<string, number>() // 局ID → Y位置
+
+      for (const node of bureauNodes) {
+        const height = calculateHeight(node.amount)
+        const yPos = layer1Y + height / 2
+        newNodes.push({
+          ...node,
+          height,
+          y: yPos
+        })
+        bureauYPositions.set(node.id, yPos) // 局の中心Y位置を記録
+        layer1Y += height + nodeSpacing
+      }
+      layerEndY.set(1, layer1Y)
+      layerCurrentY.set(1, layer1Y)
+
+      // Layer 2 (課) を配置 - 所属する局の位置順に合わせるが、重ならないように順次配置
+      const divisionNodes = (layerMap.get(2) || [])
+
+      // 局ごとに課をグループ化（局がない場合は府省から直接接続）
+      const divisionsByBureau = new Map<string, LayoutNode[]>()
+      const divisionsWithoutBureau: LayoutNode[] = []
+
+      for (const div of divisionNodes) {
+        // 元データから課の親（局 or 府省）を探す
+        const parentEdge = originalData.edges.find(e => e.targetId === div.id)
+        if (parentEdge) {
+          const parentNode = originalData.nodes.find(n => n.id === parentEdge.sourceId)
+          if (parentNode?.layer === 1) {
+            // 親が局の場合
+            const bureauId = parentEdge.sourceId
+            if (!divisionsByBureau.has(bureauId)) {
+              divisionsByBureau.set(bureauId, [])
+            }
+            divisionsByBureau.get(bureauId)!.push(div)
+          } else if (parentNode?.layer === 0) {
+            // 親が府省の場合（局がない）
+            divisionsWithoutBureau.push(div)
+          }
+        }
+      }
+
+      // 局のY位置順に課を配置（重ならないように順次配置）
+      let layer2Y = layerCurrentY.get(2)!
+
+      // 局をY位置順にソート
+      const sortedBureaus = Array.from(divisionsByBureau.entries())
+        .map(([bureauId, divisions]) => ({
+          bureauId,
+          divisions,
+          bureauY: bureauYPositions.get(bureauId) || 0
+        }))
+        .sort((a, b) => a.bureauY - b.bureauY)
+
+      for (const { divisions } of sortedBureaus) {
+        // この局に属する課を金額順でソート
+        const sortedDivisions = divisions.sort((a, b) => b.amount - a.amount)
+
+        for (const node of sortedDivisions) {
           const height = calculateHeight(node.amount)
           newNodes.push({
             ...node,
             height,
-            y: currentY + height / 2
+            y: layer2Y + height / 2
           })
-          currentY += height + nodeSpacing
+          layer2Y += height + nodeSpacing
         }
-
-        layerEndY.set(layer, currentY)
-        layerCurrentY.set(layer, currentY)
       }
+
+      // 局がない課（府省から直接接続）を配置
+      if (divisionsWithoutBureau.length > 0) {
+        const sortedDivisionsWithoutBureau = divisionsWithoutBureau.sort((a, b) => b.amount - a.amount)
+        for (const node of sortedDivisionsWithoutBureau) {
+          const height = calculateHeight(node.amount)
+          newNodes.push({
+            ...node,
+            height,
+            y: layer2Y + height / 2
+          })
+          layer2Y += height + nodeSpacing
+        }
+      }
+
+      layerEndY.set(2, layer2Y)
+      layerCurrentY.set(2, layer2Y)
 
       // Layer 3 (事業) を配置
       let layer3Y = layerCurrentY.get(3)!
