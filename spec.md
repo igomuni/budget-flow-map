@@ -102,8 +102,14 @@ Key inspirations:
   - `target`
   - `value`
 
-Pre-aggregation and clustering are NOT allowed.
-All underlying entities must be individually preserved and rendered.
+### 4.4 Dynamic TopN Filtering
+
+- Load all node information (30,000+ nodes)
+- Dynamic client-side filtering:
+  - Projects (Layer 3): Default Top 500
+  - Recipients (Layer 4): Default Top 1000
+- Nodes outside TopN are aggregated as "Others"
+- TopN count and threshold are adjustable via UI
 
 ---
 
@@ -181,11 +187,12 @@ Layout must be **stable across interactions** to preserve mental maps.
 ### 7.1 Required
 
 **Hover**:
-- Highlight directly connected (1-hop) nodes and edges only
+- BFS traversal to highlight all ancestors and descendants (same range as click)
 - Non-related nodes: reduced to 20% opacity
 - Non-related edges: reduced to 15% opacity
 - Display node details in tooltip
-- Hovered node itself turns white
+- Hovered node: white stroke (3px) for emphasis (fill unchanged)
+- No stroke when not highlighted
 
 **Click (Google Maps style)**:
 - BFS traversal to highlight all ancestors and descendants
@@ -209,8 +216,7 @@ Layout must be **stable across interactions** to preserve mental maps.
 - Step-based drill-down
 - Modal-heavy navigation
 - Pagination-based exploration
-- TopN filtering
-- Visual aggregation/clustering
+- Visual aggregation/clustering beyond TopN filtering
 
 ---
 
