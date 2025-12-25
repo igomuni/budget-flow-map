@@ -130,10 +130,38 @@ public/data/layout.json.gz  (Git管理用)
 - `scripts/compute-layout.ts`: d3-sankeyレイアウト計算
 - `scripts/decompress-data.sh`: prebuildフックで解凍
 
-## 仕様書
+## ドキュメント
 
-- `spec.md`: 英語版仕様書
-- `spec.ja.md`: 日本語版仕様書
+### ディレクトリ構成
+
+```
+docs/
+├── spec.md              # 英語版仕様書
+├── spec.ja.md           # 日本語版仕様書
+├── INITIAL_PROMPT.md    # 初期プロンプト（アーカイブ）
+└── YYYYMMDD_HHMM_*.md   # 日付付きドキュメント
+```
+
+### ドキュメント命名規則
+
+新規ドキュメントは以下の形式で作成:
+
+```
+docs/YYYYMMDD_HHMM_タイトル.md
+```
+
+例:
+- `docs/20251226_0730_roadmap.md` - ロードマップ
+- `docs/20251226_1500_performance-tuning.md` - パフォーマンスチューニング記録
+
+### ドキュメントの種類
+
+| 種類 | 命名パターン | 説明 |
+|------|-------------|------|
+| 仕様書 | `spec*.md` | 設計憲法。実装はこれに従属 |
+| ロードマップ | `*_roadmap.md` | 今後の開発計画 |
+| ADR | `*_adr-*.md` | Architecture Decision Record |
+| 作業ログ | `*_log-*.md` | 作業記録・振り返り |
 
 仕様書を「設計憲法」として扱い、実装はこれに完全に従属する。
 
