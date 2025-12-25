@@ -74,7 +74,6 @@ export function useDynamicTopN(
     let otherRecipientNode: LayoutNode | null = null
 
     const nodeSpacing = 1
-    const ministrySectionPadding = 5
 
     // Layer 0-2を府省庁ごとにグループ化
     const nodesByMinistryByLayer = new Map<string, Map<number, LayoutNode[]>>()
@@ -127,9 +126,6 @@ export function useDynamicTopN(
       // この府省庁のすべてのレイヤーの終端の最大値を記録
       ministryEndY.set(ministryId, Math.max(...layerEnds))
     }
-
-    // 全レイヤーの最大Y位置をglobalYとして使用
-    const globalY = Math.max(...layerCurrentY) + ministrySectionPadding
 
     // Layer 3 (事業) の配置（レイヤーの最初は0から開始）
     const projectsByMinistryForLayout = new Map<string, LayoutNode[]>()
@@ -190,8 +186,8 @@ export function useDynamicTopN(
       if (projects.length > 0) {
         const totalAmount = projects.reduce((sum, n) => sum + n.amount, 0)
         const firstProject = projects[0]
-        const otherHeight = Math.max(MIN_HEIGHT, Math.log10(totalAmount + 1) * 3)
-        const otherY = ministryProjectEndY.get(ministryId) || firstProject.y
+        const otherHeight = calculateHeight(totalAmount)
+        const currentY = ministryProjectEndY.get(ministryId) || layer3CurrentY
 
         const otherNode: LayoutNode = {
           id: `other_${ministryId}_layer3_dynamic`,
@@ -201,7 +197,7 @@ export function useDynamicTopN(
           amount: totalAmount,
           ministryId,
           x: firstProject.x,
-          y: otherY + otherHeight / 2,
+          y: currentY + otherHeight / 2,
           width: firstProject.width,
           height: otherHeight,
           metadata: {
@@ -212,6 +208,11 @@ export function useDynamicTopN(
         }
         newNodes.push(otherNode)
         otherProjectMap.set(ministryId, otherNode)
+
+        // Update layer3CurrentY to avoid overlaps
+        const newY = currentY + otherHeight + nodeSpacing
+        ministryProjectEndY.set(ministryId, newY)
+        layer3CurrentY = Math.max(layer3CurrentY, newY)
       }
     }
 

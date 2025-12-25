@@ -205,11 +205,11 @@ export function Minimap({
 
     // Draw nodes as tiny rectangles (Sankey-style), colored by layer
     const layerColors = [
-      '#4ecdc4', // ministry
-      '#45b7d1', // bureau
-      '#96ceb4', // division
-      '#ffeaa7', // project
-      '#dfe6e9', // recipient
+      '#4ecdc4', // ministry - cyan
+      '#45b7d1', // bureau - blue
+      '#96ceb4', // division - green
+      '#ffeaa7', // project - yellow
+      '#ffa726', // recipient - vibrant orange
     ]
 
     for (const node of nodes) {

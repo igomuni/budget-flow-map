@@ -194,7 +194,7 @@ export function BudgetFlowMap() {
           layoutData={scaledData}
           onViewStateChange={handleViewStateChange}
           externalTarget={navigateTarget}
-          externalZoom={viewState ? currentZoom : undefined}
+          externalZoom={currentZoom}
         />
       </div>
       {/* Minimap on right */}
