@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 
 interface TopNSettingsProps {
   topProjects: number
@@ -45,6 +45,25 @@ export function TopNSettings({
     return `${value.toFixed(0)}円`
   }
 
+  // Handle direct input for projects
+  const handleProjectsInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = parseInt(e.target.value) || 50
+      setDraftProjects(Math.max(50, Math.min(2000, value)))
+    },
+    []
+  )
+
+  // Handle direct input for recipients
+  const handleRecipientsInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = parseInt(e.target.value) || 100
+      setDraftRecipients(Math.max(100, Math.min(5000, value)))
+    },
+    []
+  )
+
+
   if (!isOpen) {
     return (
       <button
@@ -89,15 +108,25 @@ export function TopNSettings({
           <label className="block text-xs font-medium text-gray-700 mb-1">
             事業 (Layer 3) - Top {draftProjects.toLocaleString()}
           </label>
-          <input
-            type="range"
-            min={50}
-            max={2000}
-            step={50}
-            value={draftProjects}
-            onChange={(e) => setDraftProjects(parseInt(e.target.value))}
-            className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={50}
+              max={2000}
+              step={50}
+              value={draftProjects}
+              onChange={(e) => setDraftProjects(parseInt(e.target.value))}
+              className="flex-1 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+            />
+            <input
+              type="number"
+              min={50}
+              max={2000}
+              value={draftProjects}
+              onChange={handleProjectsInput}
+              className="w-16 px-2 py-1 text-xs text-right text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
           <div className="flex justify-between text-[10px] text-gray-400 mt-1">
             <span>50</span>
             <span>2000</span>
@@ -109,15 +138,25 @@ export function TopNSettings({
           <label className="block text-xs font-medium text-gray-700 mb-1">
             支出先 (Layer 4) - Top {draftRecipients.toLocaleString()}
           </label>
-          <input
-            type="range"
-            min={100}
-            max={5000}
-            step={100}
-            value={draftRecipients}
-            onChange={(e) => setDraftRecipients(parseInt(e.target.value))}
-            className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={100}
+              max={5000}
+              step={100}
+              value={draftRecipients}
+              onChange={(e) => setDraftRecipients(parseInt(e.target.value))}
+              className="flex-1 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+            />
+            <input
+              type="number"
+              min={100}
+              max={5000}
+              value={draftRecipients}
+              onChange={handleRecipientsInput}
+              className="w-16 px-2 py-1 text-xs text-right text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
           <div className="flex justify-between text-[10px] text-gray-400 mt-1">
             <span>100</span>
             <span>5000</span>

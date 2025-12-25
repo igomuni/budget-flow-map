@@ -14,6 +14,7 @@ export function BudgetFlowMap() {
   const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
   const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
   const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
+  const [nodeWidth, setNodeWidth] = useState(50) // px単位
   const [topProjects, setTopProjects] = useState(500)
   const [topRecipients, setTopRecipients] = useState(1000)
   const [threshold, setThreshold] = useState(1e12) // 1兆円 = 1,000,000,000,000円
@@ -59,6 +60,7 @@ export function BudgetFlowMap() {
         ...node,
         x: node.x + (layerXOffsets.get(node.layer) || 0),
         y: node.y + yOffset,
+        width: nodeWidth, // ノード幅を適用
       }
     })
 
@@ -99,11 +101,13 @@ export function BudgetFlowMap() {
         maxY: Math.ceil(maxY),
       }
     }
-  }, [data, nodeSpacingX, nodeSpacingY])
+  }, [data, nodeSpacingX, nodeSpacingY, nodeWidth])
 
   // Handle fit to screen - calculate zoom to fit entire bounds
   const handleFitToScreen = useCallback(() => {
     if (!scaledData) return
+
+    // Calculate center of bounds
     const centerX = (scaledData.bounds.minX + scaledData.bounds.maxX) / 2
     const centerY = (scaledData.bounds.minY + scaledData.bounds.maxY) / 2
 
@@ -111,9 +115,10 @@ export function BudgetFlowMap() {
     const boundsWidth = scaledData.bounds.maxX - scaledData.bounds.minX
     const boundsHeight = scaledData.bounds.maxY - scaledData.bounds.minY
 
-    // Assume viewport is roughly 1200x800 (will be adjusted by deck.gl)
-    const viewportWidth = 1200
-    const viewportHeight = 800
+    // Use actual window size (accounting for minimap width)
+    const MINIMAP_WIDTH = 120
+    const viewportWidth = window.innerWidth - MINIMAP_WIDTH
+    const viewportHeight = window.innerHeight
 
     // Calculate zoom level to fit bounds with some padding
     const padding = 1.1 // 10% padding
@@ -121,6 +126,7 @@ export function BudgetFlowMap() {
     const zoomY = Math.log2(viewportHeight / (boundsHeight * padding))
     const fitZoom = Math.min(zoomX, zoomY)
 
+    // Reset view state to center with calculated zoom
     setViewState({
       target: [centerX, centerY],
       zoom: fitZoom,
@@ -210,8 +216,10 @@ export function BudgetFlowMap() {
         onZoomChange={handleZoomChange}
         nodeSpacingX={nodeSpacingX}
         nodeSpacingY={nodeSpacingY}
+        nodeWidth={nodeWidth}
         onNodeSpacingXChange={setNodeSpacingX}
         onNodeSpacingYChange={setNodeSpacingY}
+        onNodeWidthChange={setNodeWidth}
         onFitToScreen={handleFitToScreen}
       />
     </div>
