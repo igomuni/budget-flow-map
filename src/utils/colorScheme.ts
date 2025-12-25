@@ -65,22 +65,3 @@ export function getNodeColor(node: LayoutNode): [number, number, number, number]
   return [r, g, b, 255]
 }
 
-/**
- * Get edge color based on source ministry (RGBA)
- */
-export function getEdgeColor(ministryId: string): [number, number, number, number] {
-  const baseColor = getMinistryColor(ministryId)
-  return [baseColor[0], baseColor[1], baseColor[2], 77] // 30% opacity
-}
-
-/**
- * Get edge opacity based on interaction state
- */
-export function getEdgeOpacity(
-  isConnected: boolean,
-  hasActiveSelection: boolean
-): number {
-  if (!hasActiveSelection) return 77        // 30% default
-  if (isConnected) return 255               // 100% connected
-  return 26                                  // 10% non-related
-}

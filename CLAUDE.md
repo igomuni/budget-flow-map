@@ -17,7 +17,7 @@ RSシステム（行政事業レビュー）のCSVデータを元に、5層のSa
 ## 技術スタック
 
 - **フレームワーク**: React 18 + TypeScript
-- **レンダリング**: deck.gl (ScatterplotLayer + PathLayer)
+- **レンダリング**: deck.gl (PolygonLayer + PathLayer)
 - **状態管理**: Zustand
 - **スタイリング**: Tailwind CSS
 - **ビルド**: Vite
@@ -37,17 +37,24 @@ Layer0   Layer1  Layer2  Layer3   Layer4
 src/
 ├── components/          # Reactコンポーネント
 │   ├── App.tsx
-│   ├── BudgetFlowMap.tsx
-│   ├── DeckGLCanvas.tsx
-│   ├── InfoPanel/       # 左パネル（タブ切替式）
+│   ├── BudgetFlowMap.tsx   # メインコンテナ（TopN/間隔設定管理）
+│   ├── DeckGLCanvas.tsx    # deck.glレンダリング（ハイライト計算含む）
+│   ├── Minimap.tsx         # 右側ミニマップ
+│   ├── MapControls.tsx     # ズーム・間隔コントロール
+│   ├── TopNSettings.tsx    # TopN設定パネル
+│   ├── InfoPanel/          # 左パネル（タブ切替式）
 │   └── Tooltip.tsx
 ├── layers/              # deck.glレイヤー生成
-│   ├── createNodeLayers.ts
-│   └── createEdgeLayers.ts
+│   ├── createNodeLayers.ts   # PolygonLayerでノード描画
+│   └── createEdgeLayers.ts   # PathLayerでエッジ描画
+├── hooks/               # カスタムフック
+│   ├── useLayoutData.ts      # layout.json.gzの読み込み
+│   └── useDynamicTopN.ts     # 動的TopNフィルタリング
 ├── store/               # Zustandストア
 ├── types/               # TypeScript型定義
-├── utils/               # ユーティリティ
-└── hooks/               # カスタムフック
+└── utils/               # ユーティリティ
+    ├── colorScheme.ts        # 府省庁カラー定義
+    └── sankeyPath.ts         # Bezier曲線パス生成
 ```
 
 ## データパイプライン
@@ -69,10 +76,18 @@ CSVデータ → normalize_csv.py → generate-graph.ts → compute-layout.ts �
 
 | 操作 | 動作 |
 |------|------|
-| ホバー | 直接接続のエッジのみハイライト + ツールチップ |
-| クリック | 左パネルに詳細表示（ビューは不変） |
+| ホバー | 直接接続のノード/エッジをハイライト + ツールチップ |
+| クリック | 先祖・子孫すべてをハイライト + 左パネルに詳細表示 |
 | ズーム | マウスホイール、連続的、ラベル表示が変化 |
 | パン | ドラッグ |
+
+### ハイライト仕様
+
+- **ホバー時**: 直接接続（1ホップ）のノードとエッジのみハイライト
+- **選択時**: BFS探索で先祖・子孫すべてを強調表示
+- **非関連ノード**: 20%不透明度に減衰
+- **非関連エッジ**: 15%不透明度に減衰
+- **選択ノード**: ゴールドのストローク（3px）で強調（Fillは変更しない）
 
 ## ズーム連動ラベル表示
 
@@ -119,3 +134,22 @@ public/data/layout.json.gz  (Git管理用)
 - `spec.ja.md`: 日本語版仕様書
 
 仕様書を「設計憲法」として扱い、実装はこれに完全に従属する。
+
+## エッジ描画
+
+- **形状**: Sankey式ベジェ曲線（cubic bezier、40%コントロールポイント、20セグメント）
+- **太さ**: 金額に線形比例（閾値ベースのスケーリング）
+- **色**: 半透明グレーブルー（#8294c8）
+- **透明度**:
+  - 通常: 30%
+  - ハイライト: 70%（鮮やかな青 #5090ff）
+  - 非関連: 15%
+
+## 動的TopNフィルタリング
+
+全データ（32,609ノード）をロードし、クライアント側で動的にフィルタリング:
+- 事業（Layer 3）: デフォルト Top 500
+- 支出先（Layer 4）: デフォルト Top 1000
+- 閾値: 最小高さ適用の基準（デフォルト 1兆円）
+
+フィルタリング外のノードは「その他」として集約される。

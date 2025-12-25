@@ -152,13 +152,16 @@ Layout must be **stable across interactions** to preserve mental maps.
 
 ### 6.2 Edge Design
 
-- **Width**: Linear proportion to amount
-- **Color**: Inherits upstream node (ministry) color
-- **Shape**: Sankey-style Bezier curves (emphasizing horizontal flow)
+- **Width**: Linear proportion to amount (threshold-based scaling)
+- **Color**: Neutral gray-blue (RGB: 130, 160, 200)
+- **Shape**: Sankey-style Bezier curves
+  - Cubic bezier curves
+  - Control point offset: 40%
+  - Segments: 20 (smooth curves)
 - **Opacity**:
-  - Normal: 30%
-  - Hover-related: 100%
-  - Non-related: 10%
+  - Normal: 30% (77/255)
+  - Highlighted: 70% (179/255), vibrant blue (RGB: 80, 140, 255)
+  - Non-related: 15% (38/255)
 
 ### 6.3 Label Display (Zoom-Linked)
 
@@ -178,10 +181,15 @@ Layout must be **stable across interactions** to preserve mental maps.
 ### 7.1 Required
 
 **Hover**:
-- Highlight directly connected edges only
+- Highlight directly connected (1-hop) nodes and edges only
+- Non-related nodes: reduced to 20% opacity
+- Non-related edges: reduced to 15% opacity
 - Display node details in tooltip
+- Hovered node itself turns white
 
 **Click (Google Maps style)**:
+- BFS traversal to highlight all ancestors and descendants
+- Selected node: gold stroke (3px) for emphasis (fill unchanged)
 - Display detailed information in left-side panel
 - Tab switching: Basic Info / Related Recipients / Flow Context
 - Viewport does NOT change (no drill-down)
