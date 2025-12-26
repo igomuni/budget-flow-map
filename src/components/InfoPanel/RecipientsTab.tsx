@@ -46,6 +46,16 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
           if (!visited.has(targetNode.id)) {
             visited.add(targetNode.id)
             queue.push(targetNode.id)
+
+            // 「その他」ノードの場合、集約されたノードも探索対象に追加
+            if (targetNode.metadata.isOther && targetNode.metadata.aggregatedIds) {
+              for (const aggregatedId of targetNode.metadata.aggregatedIds) {
+                if (!visited.has(aggregatedId)) {
+                  visited.add(aggregatedId)
+                  queue.push(aggregatedId)
+                }
+              }
+            }
           }
         }
       }
@@ -89,15 +99,6 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
 
   return (
     <div className="space-y-4">
-      {/* Warning for organization nodes with many recipients */}
-      {(node.type === 'ministry' || node.type === 'bureau' || node.type === 'division') && recipients.length > 100 && (
-        <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-lg p-3">
-          <p className="text-xs text-yellow-300">
-            ⚠️ 支出先が{recipients.length.toLocaleString()}件あります。表示に時間がかかる場合があります。
-          </p>
-        </div>
-      )}
-
       {/* Summary */}
       <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-3">
         <div className="flex items-center justify-between">
