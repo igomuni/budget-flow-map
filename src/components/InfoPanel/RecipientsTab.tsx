@@ -14,24 +14,51 @@ interface RecipientWithAmount {
 }
 
 export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
-  // この事業から支出先への接続を検索
+  // このノードから到達可能な全ての支出先を検索（再帰的）
   const recipients = useMemo((): RecipientWithAmount[] => {
-    // 事業ノード以外は空配列を返す
-    if (node.type !== 'project') {
+    // 支出先ノード自体は表示しない
+    if (node.type === 'recipient') {
       return []
     }
 
-    // この事業ノードからの出エッジを取得
-    const outgoingEdges = edges.filter(edge => edge.sourceId === node.id)
+    // BFS（幅優先探索）で全ての子孫ノードを探索し、支出先を集める
+    const recipientMap = new Map<string, number>() // recipientId -> 累積金額
+    const visited = new Set<string>()
+    const queue: string[] = [node.id]
+    visited.add(node.id)
 
-    // エッジから支出先ノードと金額を取得
+    while (queue.length > 0) {
+      const currentId = queue.shift()!
+
+      // このノードからの出エッジを取得
+      const outgoingEdges = edges.filter(edge => edge.sourceId === currentId)
+
+      for (const edge of outgoingEdges) {
+        const targetNode = nodes.find(n => n.id === edge.targetId)
+        if (!targetNode) continue
+
+        // 支出先ノードなら記録
+        if (targetNode.type === 'recipient') {
+          const currentAmount = recipientMap.get(targetNode.id) || 0
+          recipientMap.set(targetNode.id, currentAmount + edge.value)
+        } else {
+          // 支出先以外のノードなら探索キューに追加
+          if (!visited.has(targetNode.id)) {
+            visited.add(targetNode.id)
+            queue.push(targetNode.id)
+          }
+        }
+      }
+    }
+
+    // Map を配列に変換
     const recipientList: RecipientWithAmount[] = []
-    for (const edge of outgoingEdges) {
-      const recipientNode = nodes.find(n => n.id === edge.targetId)
+    for (const [recipientId, amount] of recipientMap.entries()) {
+      const recipientNode = nodes.find(n => n.id === recipientId)
       if (recipientNode && recipientNode.type === 'recipient') {
         recipientList.push({
           node: recipientNode,
-          amount: edge.value
+          amount
         })
       }
     }
@@ -40,11 +67,11 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
     return recipientList.sort((a, b) => b.amount - a.amount)
   }, [node.id, node.type, edges, nodes])
 
-  // 事業ノード以外は表示しない
-  if (node.type !== 'project') {
+  // 支出先ノード自体は表示しない
+  if (node.type === 'recipient') {
     return (
       <div className="text-slate-400 text-center py-8">
-        <p>支出先情報は事業ノードでのみ表示されます</p>
+        <p>支出先ノード自体には支出先タブは表示されません</p>
       </div>
     )
   }
@@ -52,7 +79,7 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
   if (recipients.length === 0) {
     return (
       <div className="text-slate-400 text-center py-8">
-        <p className="text-sm">この事業には支出先データがありません</p>
+        <p className="text-sm">このノードには支出先データがありません</p>
       </div>
     )
   }
@@ -62,6 +89,15 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
 
   return (
     <div className="space-y-4">
+      {/* Warning for organization nodes with many recipients */}
+      {(node.type === 'ministry' || node.type === 'bureau' || node.type === 'division') && recipients.length > 100 && (
+        <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-lg p-3">
+          <p className="text-xs text-yellow-300">
+            ⚠️ 支出先が{recipients.length.toLocaleString()}件あります。表示に時間がかかる場合があります。
+          </p>
+        </div>
+      )}
+
       {/* Summary */}
       <div className="bg-slate-700/50 border border-slate-600 rounded-lg p-3">
         <div className="flex items-center justify-between">
