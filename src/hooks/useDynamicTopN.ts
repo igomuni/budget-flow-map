@@ -308,13 +308,22 @@ export function useDynamicTopN(
       const firstRecipient = aggregatedRecipients[0]
       const otherHeight = Math.max(MIN_HEIGHT, Math.log10(totalAmount + 1) * 2)
 
+      // 集約された支出先の全sourceministriesを収集
+      const allSourceMinistries = new Set<string>()
+      for (const node of aggregatedRecipients) {
+        if (node.metadata?.sourceMinistries) {
+          for (const ministry of node.metadata.sourceMinistries) {
+            allSourceMinistries.add(ministry)
+          }
+        }
+      }
+
       otherRecipientNode = {
         id: `other_recipients_layer4_dynamic`,
         type: 'recipient',
         layer: 4,
         name: `その他の支出先 (${aggregatedRecipients.length}件)`,
         amount: totalAmount,
-        ministryId: '',
         x: firstRecipient.x,
         y: recipientY + otherHeight / 2,
         width: firstRecipient.width,
@@ -322,7 +331,8 @@ export function useDynamicTopN(
         metadata: {
           isOther: true,
           aggregatedCount: aggregatedRecipients.length,
-          aggregatedIds: aggregatedRecipients.map(n => n.id)
+          aggregatedIds: aggregatedRecipients.map(n => n.id),
+          sourceMinistries: Array.from(allSourceMinistries).sort()
         }
       }
       newNodes.push(otherRecipientNode)

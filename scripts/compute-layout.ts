@@ -332,8 +332,8 @@ async function main() {
     currentY += sectionHeight + MINISTRY_SECTION_PADDING
   }
 
-  // 支出先ノード（Layer 4）の位置を調整
-  adjustRecipientPositions(layoutNodes, nodePositions, rawGraph.edges, nodeMap, ministrySections)
+  // 支出先ノード（Layer 4）の位置を調整（入エッジの平均Y位置ベース）
+  adjustRecipientPositionsByEdges(layoutNodes, nodePositions, rawGraph.edges)
 
   console.log(`   → ${layoutNodes.length} ノード配置完了`)
 
@@ -574,17 +574,27 @@ function aggregateTopN(
     const otherNodeId = 'other_all_layer4'
     const totalAmount = aggregatedRecipientsNodes.reduce((sum, n) => sum + n.amount, 0)
 
+    // 集約された支出先の全sourceministriesを収集
+    const allSourceMinistries = new Set<string>()
+    for (const node of aggregatedRecipientsNodes) {
+      if (node.metadata?.sourceMinistries) {
+        for (const ministry of node.metadata.sourceMinistries) {
+          allSourceMinistries.add(ministry)
+        }
+      }
+    }
+
     const otherNode: RawNode = {
       id: otherNodeId,
       type: 'recipient',
       layer: 4,
       name: `その他の支出先 (${aggregatedRecipientsNodes.length}件)`,
       amount: totalAmount,
-      ministryId: '', // 府省庁横断なのでministryIdは空
       metadata: {
         isOther: true,
         aggregatedCount: aggregatedRecipientsNodes.length,
-        aggregatedIds: aggregatedRecipientsNodes.map(n => n.id)
+        aggregatedIds: aggregatedRecipientsNodes.map(n => n.id),
+        sourceMinistries: Array.from(allSourceMinistries).sort()
       }
     }
 
@@ -685,37 +695,26 @@ function findMinistryIdForNode(
 }
 
 /**
- * 支出先ノードの位置を調整
- * - 府省庁ごとにセクション内で支出先を配置
- * - 重なりを解消しつつセクション内に収める
+ * 支出先ノードの位置を調整（入エッジの平均Y位置ベース）
+ * - 府省庁セクションに依存せず、入エッジの平均Y位置で配置
+ * - 複数府省庁支出先にも対応
  */
-function adjustRecipientPositions(
+function adjustRecipientPositionsByEdges(
   layoutNodes: LayoutNode[],
   nodePositions: Map<string, { x: number; y: number; height: number }>,
-  edges: RawEdge[],
-  nodeMap: Map<string, RawNode>,
-  ministrySections: Map<string, { startY: number; endY: number }>
+  edges: RawEdge[]
 ) {
-  // 府省庁ごとに支出先をグループ化
-  const recipientsByMinistry = new Map<string, LayoutNode[]>()
-
-  for (const node of layoutNodes) {
-    if (node.type !== 'recipient') continue
-    const ministryName = node.ministryId
-    if (!recipientsByMinistry.has(ministryName)) {
-      recipientsByMinistry.set(ministryName, [])
-    }
-    recipientsByMinistry.get(ministryName)!.push(node)
-  }
+  // 支出先ノードのみ取得
+  const recipients = layoutNodes.filter(n => n.type === 'recipient')
 
   // 支出先ノードごとに、参照元のY位置を収集
   const recipientSources = new Map<string, number[]>()
   for (const edge of edges) {
-    const targetNode = nodeMap.get(edge.targetId)
-    if (!targetNode || targetNode.type !== 'recipient') continue
-
     const sourcePos = nodePositions.get(edge.sourceId)
     if (!sourcePos) continue
+
+    const targetNode = layoutNodes.find(n => n.id === edge.targetId)
+    if (!targetNode || targetNode.type !== 'recipient') continue
 
     if (!recipientSources.has(edge.targetId)) {
       recipientSources.set(edge.targetId, [])
@@ -723,32 +722,22 @@ function adjustRecipientPositions(
     recipientSources.get(edge.targetId)!.push(sourcePos.y)
   }
 
-  // 各府省庁のセクション内で支出先を配置
-  for (const [ministryName, recipients] of recipientsByMinistry) {
-    const section = ministrySections.get(ministryName)
-    if (!section) continue
+  // 入エッジの平均Y位置でソート
+  recipients.sort((a, b) => {
+    const aYs = recipientSources.get(a.id) || [a.y]
+    const bYs = recipientSources.get(b.id) || [b.y]
+    const aAvg = aYs.reduce((sum, y) => sum + y, 0) / aYs.length
+    const bAvg = bYs.reduce((sum, y) => sum + y, 0) / bYs.length
+    return aAvg - bAvg
+  })
 
-    // 参照元の平均Y位置でソート
-    recipients.sort((a, b) => {
-      const aYs = recipientSources.get(a.id) || [a.y]
-      const bYs = recipientSources.get(b.id) || [b.y]
-      const aAvg = aYs.reduce((x, y) => x + y, 0) / aYs.length
-      const bAvg = bYs.reduce((x, y) => x + y, 0) / bYs.length
-      return aAvg - bAvg
-    })
-
-    // セクション内で均等配置
-    const totalHeight = recipients.reduce((sum, n) => sum + n.height + NODE_VERTICAL_PADDING, 0)
-    const availableHeight = section.endY - section.startY
-    const startY = section.startY + Math.max(0, (availableHeight - totalHeight) / 2)
-
-    let currentY = startY
-    for (const node of recipients) {
-      node.y = currentY + node.height / 2
-      const pos = nodePositions.get(node.id)
-      if (pos) pos.y = node.y
-      currentY += node.height + NODE_VERTICAL_PADDING
-    }
+  // 上から順に配置
+  let currentY = 0
+  for (const node of recipients) {
+    node.y = currentY + node.height / 2
+    const pos = nodePositions.get(node.id)
+    if (pos) pos.y = node.y
+    currentY += node.height + NODE_VERTICAL_PADDING
   }
 }
 
