@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
 import { useDynamicTopN } from '@/hooks/useDynamicTopN'
-import { useUrlState } from '@/hooks/useUrlState'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
@@ -26,66 +25,6 @@ export function BudgetFlowMap() {
 
   // 動的TopNフィルタリングを適用
   const data = useDynamicTopN(rawData, { topProjects, topRecipients, threshold })
-
-  // URL状態同期
-  const handleUrlStateChange = useCallback((urlState: {
-    x?: number
-    y?: number
-    zoom?: number
-    node?: string
-    topProjects?: number
-    topRecipients?: number
-    threshold?: number
-  }) => {
-    // Update view state from URL
-    if (urlState.x !== undefined && urlState.y !== undefined) {
-      setViewState(prev => ({
-        ...prev,
-        target: [urlState.x!, urlState.y!] as [number, number],
-        zoom: urlState.zoom ?? prev?.zoom ?? -4,
-        minZoom: -13,
-        maxZoom: 6,
-      }))
-    } else if (urlState.zoom !== undefined) {
-      setViewState(prev => ({
-        ...prev,
-        zoom: urlState.zoom!,
-        minZoom: -13,
-        maxZoom: 6,
-      }))
-    }
-
-    // Update selection from URL
-    if (urlState.node !== undefined) {
-      setSelectedNodeId(urlState.node)
-    }
-
-    // Update TopN settings from URL
-    if (urlState.topProjects !== undefined) {
-      setTopProjects(urlState.topProjects)
-    }
-    if (urlState.topRecipients !== undefined) {
-      setTopRecipients(urlState.topRecipients)
-    }
-    if (urlState.threshold !== undefined) {
-      setThreshold(urlState.threshold)
-    }
-  }, [])
-
-  // Get current target coordinates from view state
-  const currentTarget = viewState?.target as [number, number] | undefined
-  const urlZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : undefined
-
-  useUrlState({
-    x: currentTarget?.[0],
-    y: currentTarget?.[1],
-    zoom: urlZoom,
-    selectedNodeId,
-    topProjects,
-    topRecipients,
-    threshold,
-    onStateChange: handleUrlStateChange,
-  })
 
   // Handle search result selection - navigate to node and select it
   const handleSearchSelect = useCallback((nodeId: string, x: number, y: number) => {

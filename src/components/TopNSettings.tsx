@@ -68,7 +68,7 @@ export function TopNSettings({
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="absolute top-4 left-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-2 hover:bg-gray-50 transition-colors"
+        className="absolute bottom-4 right-4 opacity-70 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-2 hover:bg-gray-50 transition-colors"
         title="TopN設定"
       >
         <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -81,7 +81,7 @@ export function TopNSettings({
   }
 
   return (
-    <div className="absolute top-4 left-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg p-4 w-80">
+    <div className="absolute bottom-4 right-4 z-20 bg-white/95 backdrop-blur rounded-lg shadow-lg p-4 w-80">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-bold text-gray-800">TopN表示設定</h3>
         <button
