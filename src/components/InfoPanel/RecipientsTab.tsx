@@ -36,7 +36,67 @@ export function RecipientsTab({ node, rawNodes, rawEdges }: RecipientsTabProps) 
       return []
     }
 
-    // 選択ノードの府省庁IDを取得
+    // 事業/局/課ノードの場合: その組織配下の事業から支出している支出先のみ
+    if (node.type === 'project' || node.type === 'bureau' || node.type === 'division') {
+      // この組織配下の全事業IDを取得
+      let projectIds: Set<string>
+
+      if (node.type === 'project') {
+        // 事業ノード自身
+        projectIds = new Set([node.id])
+      } else if (node.type === 'bureau') {
+        // この局配下の全事業を取得
+        projectIds = new Set(
+          rawNodes
+            .filter(n => n.type === 'project' && n.ministryId === node.ministryId)
+            .filter(n => {
+              // この局に属する事業を判定（局→課→事業の階層を辿る）
+              // 事業の親課を探す
+              const projectEdges = rawEdges.filter(e => e.targetId === n.id && e.sourceId.startsWith('d'))
+              for (const edge of projectEdges) {
+                // 課の親局を探す
+                const divisionEdges = rawEdges.filter(e => e.targetId === edge.sourceId && e.sourceId === node.id)
+                if (divisionEdges.length > 0) return true
+              }
+              // 局から直接事業へのエッジがある場合
+              const directEdges = rawEdges.filter(e => e.targetId === n.id && e.sourceId === node.id)
+              return directEdges.length > 0
+            })
+            .map(n => n.id)
+        )
+      } else {
+        // 課の場合: この課配下の全事業
+        projectIds = new Set(
+          rawNodes
+            .filter(n => n.type === 'project' && n.ministryId === node.ministryId)
+            .filter(n => {
+              // この課から事業へのエッジがあるかチェック
+              const edges = rawEdges.filter(e => e.sourceId === node.id && e.targetId === n.id)
+              return edges.length > 0
+            })
+            .map(n => n.id)
+        )
+      }
+
+      // これらの事業からの出エッジを取得
+      const outgoingEdges = rawEdges.filter(e => projectIds.has(e.sourceId))
+      const recipientIds = new Set(outgoingEdges.map(e => e.targetId))
+
+      return rawNodes
+        .filter(n => n.type === 'recipient' && recipientIds.has(n.id))
+        .map(recipient => {
+          // これらの事業からこの支出先への金額の合計
+          const amount = outgoingEdges
+            .filter(e => e.targetId === recipient.id)
+            .reduce((sum, e) => sum + e.value, 0)
+
+          return { node: recipient, amount }
+        })
+        .filter(r => r.amount > 0)
+        .sort((a, b) => b.amount - a.amount)
+    }
+
+    // 府省庁ノードの場合: その府省庁に関連する全支出先
     const targetMinistryId = node.ministryId
     if (!targetMinistryId) {
       return []
@@ -60,7 +120,7 @@ export function RecipientsTab({ node, rawNodes, rawEdges }: RecipientsTabProps) 
       })
       .filter(r => r.amount > 0) // 金額がある支出先のみ
       .sort((a, b) => b.amount - a.amount)
-  }, [node.type, node.ministryId, rawNodes, rawEdges])
+  }, [node.type, node.id, node.ministryId, rawNodes, rawEdges])
 
   // 支出先ノード自体は表示しない
   if (node.type === 'recipient') {

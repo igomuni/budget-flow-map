@@ -270,7 +270,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
             {activeTab === 'basic' && <BasicInfoTab node={selectedNode} />}
             {activeTab === 'recipients' && (
               selectedNode.type === 'recipient' ? (
-                <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} />
+                <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
               ) : (
                 <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
               )

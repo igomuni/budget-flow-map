@@ -6,6 +6,8 @@ interface ProjectsTabProps {
   node: LayoutNode
   edges: LayoutEdge[]
   nodes: LayoutNode[]
+  rawNodes: LayoutNode[]
+  rawEdges: LayoutEdge[]
 }
 
 interface ProjectWithAmount {
@@ -13,50 +15,45 @@ interface ProjectWithAmount {
   amount: number // エッジの実際の支出金額（事業予算ではない）
 }
 
-export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
-  // この支出先に支出している事業を集計（シンプルフィルタリング）
+export function ProjectsTab({ node, rawNodes, rawEdges }: ProjectsTabProps) {
+  // 全事業の総額ランキングを計算（TopN判定用）
+  const globalProjectRanking = useMemo(() => {
+    const allProjects = rawNodes
+      .filter(n => n.type === 'project')
+      .sort((a, b) => b.amount - a.amount)
+
+    const rankMap = new Map<string, number>()
+    allProjects.forEach((project, index) => {
+      rankMap.set(project.id, index + 1)
+    })
+    return rankMap
+  }, [rawNodes])
+
+  // この支出先に支出している事業を集計（元データから直接フィルタ）
   const projects = useMemo((): ProjectWithAmount[] => {
     // 支出先ノード以外は空配列を返す
     if (node.type !== 'recipient') {
       return []
     }
 
-    // 全事業（「その他」を除く）から、この支出先へのエッジを探す
-    const allProjects = nodes.filter(n =>
-      n.type === 'project' &&
-      !n.metadata.isOther
-    )
+    // この支出先への入エッジを取得
+    const incomingEdges = rawEdges.filter(e => e.targetId === node.id)
+    const projectIds = new Set(incomingEdges.map(e => e.sourceId))
 
-    return allProjects
+    // 事業ノードのみフィルタ
+    return rawNodes
+      .filter(n => n.type === 'project' && projectIds.has(n.id))
       .map(project => {
-        // この事業からの直接エッジ
-        const directAmount = edges
-          .filter(e => e.sourceId === project.id && e.targetId === node.id)
+        // この事業からこの支出先への金額
+        const amount = incomingEdges
+          .filter(e => e.sourceId === project.id)
           .reduce((sum, e) => sum + e.value, 0)
 
-        // 「その他の支出先」経由のエッジ
-        const otherRecipientAmount = edges
-          .filter(e => {
-            if (e.sourceId !== project.id) return false
-            const target = nodes.find(n => n.id === e.targetId)
-            return target?.type === 'recipient' &&
-                   target.metadata.isOther &&
-                   target.metadata.aggregatedIds?.includes(node.id)
-          })
-          .reduce((sum, e) => {
-            const target = nodes.find(n => n.id === e.targetId)!
-            const count = target.metadata.aggregatedIds?.length || 1
-            return sum + (e.value / count) // 均等配分
-          }, 0)
-
-        return {
-          node: project,
-          amount: directAmount + otherRecipientAmount
-        }
+        return { node: project, amount }
       })
       .filter(p => p.amount > 0)
       .sort((a, b) => b.amount - a.amount)
-  }, [node.id, node.type, nodes, edges])
+  }, [node.type, node.id, rawNodes, rawEdges])
 
   if (node.type !== 'recipient') {
     return (
@@ -109,6 +106,7 @@ export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
           {projects.map(({ node: projectNode, amount }, index) => {
             const percentage = (amount / totalAmount) * 100
             const isZeroBudget = projectNode.amount === 0 && amount > 0
+            const globalRank = globalProjectRanking.get(projectNode.id)
 
             return (
               <div
@@ -117,7 +115,14 @@ export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
               >
                 {/* Rank and name */}
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 mt-0.5">#{index + 1}</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-xs font-medium text-slate-500">#{index + 1}</span>
+                    {globalRank && (
+                      <span className="text-[10px] text-slate-600" title="全体順位">
+                        (Top{globalRank})
+                      </span>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white">
                       {projectNode.name}
