@@ -64,15 +64,21 @@ export function DeckGLCanvas({
 
   // Create connected edges and nodes lookup for highlighting
   // Both hover and selection: show all ancestors and descendants (BFS traversal)
+  // Combine highlights from both selected and hovered nodes
   const { connectedEdges, connectedNodeIds } = useMemo(() => {
-    const activeId = hoveredNodeId || selectedNodeId
-    if (!activeId) return { connectedEdges: new Set<string>(), connectedNodeIds: new Set<string>() }
+    const activeIds: string[] = []
+    if (selectedNodeId) activeIds.push(selectedNodeId)
+    if (hoveredNodeId && hoveredNodeId !== selectedNodeId) activeIds.push(hoveredNodeId)
+
+    if (activeIds.length === 0) return { connectedEdges: new Set<string>(), connectedNodeIds: new Set<string>() }
 
     const edges = new Set<string>()
     const nodeIds = new Set<string>()
 
-    // Add the active node itself
-    nodeIds.add(activeId)
+    // Add all active nodes themselves
+    for (const id of activeIds) {
+      nodeIds.add(id)
+    }
 
     // Show all ancestors and descendants (BFS traversal)
     // Build adjacency maps for traversal
@@ -93,9 +99,9 @@ export function DeckGLCanvas({
       targetToSources.get(edge.targetId)!.push(edge.sourceId)
     }
 
-    // BFS to find all descendants (downstream)
-    const descendantsQueue = [activeId]
-    const visitedDescendants = new Set<string>([activeId])
+    // BFS to find all descendants (downstream) from all active nodes
+    const descendantsQueue = [...activeIds]
+    const visitedDescendants = new Set<string>(activeIds)
 
     while (descendantsQueue.length > 0) {
       const currentId = descendantsQueue.shift()!
@@ -110,9 +116,9 @@ export function DeckGLCanvas({
       }
     }
 
-    // BFS to find all ancestors (upstream)
-    const ancestorsQueue = [activeId]
-    const visitedAncestors = new Set<string>([activeId])
+    // BFS to find all ancestors (upstream) from all active nodes
+    const ancestorsQueue = [...activeIds]
+    const visitedAncestors = new Set<string>(activeIds)
 
     while (ancestorsQueue.length > 0) {
       const currentId = ancestorsQueue.shift()!
