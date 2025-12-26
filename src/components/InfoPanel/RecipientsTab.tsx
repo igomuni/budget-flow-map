@@ -14,24 +14,81 @@ interface RecipientWithAmount {
 }
 
 export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
-  // この事業から支出先への接続を検索
+  // 全支出先の総額ランキングを計算（TopN判定用）
+  const globalRecipientRanking = useMemo(() => {
+    const allRecipients = nodes
+      .filter(n => n.type === 'recipient' && !n.metadata.isOther)
+      .sort((a, b) => b.amount - a.amount)
+
+    const rankMap = new Map<string, number>()
+    allRecipients.forEach((recipient, index) => {
+      rankMap.set(recipient.id, index + 1)
+    })
+    return rankMap
+  }, [nodes])
+
+  // このノードから到達可能な全ての支出先を検索（再帰的）
   const recipients = useMemo((): RecipientWithAmount[] => {
-    // 事業ノード以外は空配列を返す
-    if (node.type !== 'project') {
+    // 支出先ノード自体は表示しない
+    if (node.type === 'recipient') {
       return []
     }
 
-    // この事業ノードからの出エッジを取得
-    const outgoingEdges = edges.filter(edge => edge.sourceId === node.id)
+    // BFS（幅優先探索）で全ての子孫ノードを探索し、支出先を集める
+    const recipientMap = new Map<string, number>() // recipientId -> 累積金額
+    const visited = new Set<string>()
+    const queue: string[] = [node.id]
+    visited.add(node.id)
 
-    // エッジから支出先ノードと金額を取得
+    while (queue.length > 0) {
+      const currentId = queue.shift()!
+
+      // このノードからの出エッジを取得
+      const outgoingEdges = edges.filter(edge => edge.sourceId === currentId)
+
+      for (const edge of outgoingEdges) {
+        const targetNode = nodes.find(n => n.id === edge.targetId)
+        if (!targetNode) continue
+
+        // 支出先ノードで「その他」ノードの場合、aggregatedIdsの支出先を直接記録
+        if (targetNode.type === 'recipient' && targetNode.metadata.isOther) {
+          // 「その他」ノード配下の実際の支出先を直接記録（エッジは存在しないため）
+          if (targetNode.metadata.aggregatedIds) {
+            for (const aggregatedId of targetNode.metadata.aggregatedIds) {
+              const aggregatedNode = nodes.find(n => n.id === aggregatedId)
+              if (aggregatedNode && aggregatedNode.type === 'recipient') {
+                const currentAmount = recipientMap.get(aggregatedId) || 0
+                // 「その他」ノードへのエッジの金額を、集約された支出先に均等配分
+                // （実際の金額比率は不明なため、簡易的に均等配分）
+                const perRecipientAmount = edge.value / targetNode.metadata.aggregatedIds.length
+                recipientMap.set(aggregatedId, currentAmount + perRecipientAmount)
+              }
+            }
+          }
+        }
+        // 通常の支出先ノードなら記録
+        else if (targetNode.type === 'recipient') {
+          const currentAmount = recipientMap.get(targetNode.id) || 0
+          recipientMap.set(targetNode.id, currentAmount + edge.value)
+        }
+        // 支出先以外のノードなら探索キューに追加
+        else {
+          if (!visited.has(targetNode.id)) {
+            visited.add(targetNode.id)
+            queue.push(targetNode.id)
+          }
+        }
+      }
+    }
+
+    // Map を配列に変換
     const recipientList: RecipientWithAmount[] = []
-    for (const edge of outgoingEdges) {
-      const recipientNode = nodes.find(n => n.id === edge.targetId)
+    for (const [recipientId, amount] of recipientMap.entries()) {
+      const recipientNode = nodes.find(n => n.id === recipientId)
       if (recipientNode && recipientNode.type === 'recipient') {
         recipientList.push({
           node: recipientNode,
-          amount: edge.value
+          amount
         })
       }
     }
@@ -40,11 +97,11 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
     return recipientList.sort((a, b) => b.amount - a.amount)
   }, [node.id, node.type, edges, nodes])
 
-  // 事業ノード以外は表示しない
-  if (node.type !== 'project') {
+  // 支出先ノード自体は表示しない
+  if (node.type === 'recipient') {
     return (
       <div className="text-slate-400 text-center py-8">
-        <p>支出先情報は事業ノードでのみ表示されます</p>
+        <p>支出先ノード自体には支出先タブは表示されません</p>
       </div>
     )
   }
@@ -52,7 +109,7 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
   if (recipients.length === 0) {
     return (
       <div className="text-slate-400 text-center py-8">
-        <p className="text-sm">この事業には支出先データがありません</p>
+        <p className="text-sm">このノードには支出先データがありません</p>
       </div>
     )
   }
@@ -82,6 +139,7 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
         <div className="space-y-2">
           {recipients.map(({ node: recipientNode, amount }, index) => {
             const percentage = (amount / totalAmount) * 100
+            const globalRank = globalRecipientRanking.get(recipientNode.id)
             return (
               <div
                 key={recipientNode.id}
@@ -89,7 +147,14 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
               >
                 {/* Rank and name */}
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 mt-0.5">#{index + 1}</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-xs font-medium text-slate-500">#{index + 1}</span>
+                    {globalRank && (
+                      <span className="text-[10px] text-slate-600" title="全体順位">
+                        (Top{globalRank})
+                      </span>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">
                       {recipientNode.name}
