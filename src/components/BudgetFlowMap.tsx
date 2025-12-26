@@ -270,6 +270,8 @@ export function BudgetFlowMap() {
       <SidePanel
         nodes={scaledData.nodes}
         edges={scaledData.edges}
+        rawNodes={rawData?.nodes || []}
+        rawEdges={rawData?.edges || []}
         onNodeSelect={handleSearchSelect}
       />
       {/* Main content area */}

@@ -6,6 +6,8 @@ interface RecipientsTabProps {
   node: LayoutNode
   edges: LayoutEdge[]
   nodes: LayoutNode[]
+  rawNodes: LayoutNode[]
+  rawEdges: LayoutEdge[]
 }
 
 interface RecipientWithAmount {
@@ -13,11 +15,11 @@ interface RecipientWithAmount {
   amount: number
 }
 
-export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
+export function RecipientsTab({ node, rawNodes, rawEdges }: RecipientsTabProps) {
   // 全支出先の総額ランキングを計算（TopN判定用）
   const globalRecipientRanking = useMemo(() => {
-    const allRecipients = nodes
-      .filter(n => n.type === 'recipient' && !n.metadata.isOther)
+    const allRecipients = rawNodes
+      .filter(n => n.type === 'recipient')
       .sort((a, b) => b.amount - a.amount)
 
     const rankMap = new Map<string, number>()
@@ -25,77 +27,40 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
       rankMap.set(recipient.id, index + 1)
     })
     return rankMap
-  }, [nodes])
+  }, [rawNodes])
 
-  // このノードから到達可能な全ての支出先を検索（再帰的）
+  // このノードに関連する支出先を取得（元データから直接フィルタ）
   const recipients = useMemo((): RecipientWithAmount[] => {
     // 支出先ノード自体は表示しない
     if (node.type === 'recipient') {
       return []
     }
 
-    // BFS（幅優先探索）で全ての子孫ノードを探索し、支出先を集める
-    const recipientMap = new Map<string, number>() // recipientId -> 累積金額
-    const visited = new Set<string>()
-    const queue: string[] = [node.id]
-    visited.add(node.id)
-
-    while (queue.length > 0) {
-      const currentId = queue.shift()!
-
-      // このノードからの出エッジを取得
-      const outgoingEdges = edges.filter(edge => edge.sourceId === currentId)
-
-      for (const edge of outgoingEdges) {
-        const targetNode = nodes.find(n => n.id === edge.targetId)
-        if (!targetNode) continue
-
-        // 支出先ノードで「その他」ノードの場合、aggregatedIdsの支出先を直接記録
-        if (targetNode.type === 'recipient' && targetNode.metadata.isOther) {
-          // 「その他」ノード配下の実際の支出先を直接記録（エッジは存在しないため）
-          if (targetNode.metadata.aggregatedIds) {
-            for (const aggregatedId of targetNode.metadata.aggregatedIds) {
-              const aggregatedNode = nodes.find(n => n.id === aggregatedId)
-              if (aggregatedNode && aggregatedNode.type === 'recipient') {
-                const currentAmount = recipientMap.get(aggregatedId) || 0
-                // 「その他」ノードへのエッジの金額を、集約された支出先に均等配分
-                // （実際の金額比率は不明なため、簡易的に均等配分）
-                const perRecipientAmount = edge.value / targetNode.metadata.aggregatedIds.length
-                recipientMap.set(aggregatedId, currentAmount + perRecipientAmount)
-              }
-            }
-          }
-        }
-        // 通常の支出先ノードなら記録
-        else if (targetNode.type === 'recipient') {
-          const currentAmount = recipientMap.get(targetNode.id) || 0
-          recipientMap.set(targetNode.id, currentAmount + edge.value)
-        }
-        // 支出先以外のノードなら探索キューに追加
-        else {
-          if (!visited.has(targetNode.id)) {
-            visited.add(targetNode.id)
-            queue.push(targetNode.id)
-          }
-        }
-      }
+    // 選択ノードの府省庁IDを取得
+    const targetMinistryId = node.ministryId
+    if (!targetMinistryId) {
+      return []
     }
 
-    // Map を配列に変換
-    const recipientList: RecipientWithAmount[] = []
-    for (const [recipientId, amount] of recipientMap.entries()) {
-      const recipientNode = nodes.find(n => n.id === recipientId)
-      if (recipientNode && recipientNode.type === 'recipient') {
-        recipientList.push({
-          node: recipientNode,
-          amount
-        })
-      }
-    }
+    // 元データから、この府省庁に関連する全支出先を取得
+    const allRecipients = rawNodes.filter(n =>
+      n.type === 'recipient' &&
+      n.metadata.sourceMinistries?.includes(targetMinistryId)
+    )
 
-    // 金額降順でソート
-    return recipientList.sort((a, b) => b.amount - a.amount)
-  }, [node.id, node.type, edges, nodes])
+    // 各支出先の金額を元データのエッジから計算
+    return allRecipients
+      .map(recipient => {
+        // この支出先への全入エッジの合計金額（元データから）
+        const totalAmount = rawEdges
+          .filter(e => e.targetId === recipient.id)
+          .reduce((sum, e) => sum + e.value, 0)
+
+        return { node: recipient, amount: totalAmount }
+      })
+      .filter(r => r.amount > 0) // 金額がある支出先のみ
+      .sort((a, b) => b.amount - a.amount)
+  }, [node.type, node.ministryId, rawNodes, rawEdges])
 
   // 支出先ノード自体は表示しない
   if (node.type === 'recipient') {

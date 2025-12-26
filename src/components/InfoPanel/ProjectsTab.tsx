@@ -14,69 +14,49 @@ interface ProjectWithAmount {
 }
 
 export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
-  // この支出先への入エッジを辿って、事業ノードとその支出金額を集計
+  // この支出先に支出している事業を集計（シンプルフィルタリング）
   const projects = useMemo((): ProjectWithAmount[] => {
     // 支出先ノード以外は空配列を返す
     if (node.type !== 'recipient') {
       return []
     }
-    const projectMap = new Map<string, number>() // projectId -> 累積支出金額
 
-    // この支出先への直接の入エッジを取得
-    const incomingEdges = edges.filter(edge => edge.targetId === node.id)
-
-    for (const edge of incomingEdges) {
-      const sourceNode = nodes.find(n => n.id === edge.sourceId)
-      if (!sourceNode) continue
-
-      // 事業ノードなら記録
-      if (sourceNode.type === 'project') {
-        const currentAmount = projectMap.get(sourceNode.id) || 0
-        projectMap.set(sourceNode.id, currentAmount + edge.value)
-      }
-    }
-
-    // 「その他の支出先」ノードを経由している場合の処理
-    // この支出先が「その他の支出先」ノードに集約されている可能性がある
-    // その場合、「その他の支出先」ノードへの入エッジから事業を探索
-    const otherRecipientNodes = nodes.filter(
-      n => n.type === 'recipient' &&
-           n.metadata.isOther &&
-           n.metadata.aggregatedIds?.includes(node.id)
+    // 全事業（「その他」を除く）から、この支出先へのエッジを探す
+    const allProjects = nodes.filter(n =>
+      n.type === 'project' &&
+      !n.metadata.isOther
     )
 
-    for (const otherNode of otherRecipientNodes) {
-      const otherIncomingEdges = edges.filter(edge => edge.targetId === otherNode.id)
+    return allProjects
+      .map(project => {
+        // この事業からの直接エッジ
+        const directAmount = edges
+          .filter(e => e.sourceId === project.id && e.targetId === node.id)
+          .reduce((sum, e) => sum + e.value, 0)
 
-      for (const edge of otherIncomingEdges) {
-        const sourceNode = nodes.find(n => n.id === edge.sourceId)
-        if (!sourceNode) continue
+        // 「その他の支出先」経由のエッジ
+        const otherRecipientAmount = edges
+          .filter(e => {
+            if (e.sourceId !== project.id) return false
+            const target = nodes.find(n => n.id === e.targetId)
+            return target?.type === 'recipient' &&
+                   target.metadata.isOther &&
+                   target.metadata.aggregatedIds?.includes(node.id)
+          })
+          .reduce((sum, e) => {
+            const target = nodes.find(n => n.id === e.targetId)!
+            const count = target.metadata.aggregatedIds?.length || 1
+            return sum + (e.value / count) // 均等配分
+          }, 0)
 
-        if (sourceNode.type === 'project') {
-          const currentAmount = projectMap.get(sourceNode.id) || 0
-          // 「その他」ノードへのエッジ金額を、集約された支出先数で均等配分
-          const aggregatedCount = otherNode.metadata.aggregatedIds?.length || 1
-          const perRecipientAmount = edge.value / aggregatedCount
-          projectMap.set(sourceNode.id, currentAmount + perRecipientAmount)
+        return {
+          node: project,
+          amount: directAmount + otherRecipientAmount
         }
-      }
-    }
-
-    // Map を配列に変換
-    const projectList: ProjectWithAmount[] = []
-    for (const [projectId, amount] of projectMap.entries()) {
-      const projectNode = nodes.find(n => n.id === projectId)
-      if (projectNode && projectNode.type === 'project') {
-        projectList.push({
-          node: projectNode,
-          amount // エッジの実際の支出金額（事業予算ではない）
-        })
-      }
-    }
-
-    // 金額降順でソート
-    return projectList.sort((a, b) => b.amount - a.amount)
-  }, [node.id, node.type, edges, nodes])
+      })
+      .filter(p => p.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+  }, [node.id, node.type, nodes, edges])
 
   if (node.type !== 'recipient') {
     return (
