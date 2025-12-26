@@ -50,12 +50,20 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
         const targetNode = nodes.find(n => n.id === edge.targetId)
         if (!targetNode) continue
 
-        // 支出先ノードで「その他」ノードの場合、リストには記録しないが探索は続ける
+        // 支出先ノードで「その他」ノードの場合、aggregatedIdsの支出先を直接記録
         if (targetNode.type === 'recipient' && targetNode.metadata.isOther) {
-          // 「その他」ノードは記録しないが、配下の実際の支出先を探索するためキューに追加
-          if (!visited.has(targetNode.id)) {
-            visited.add(targetNode.id)
-            queue.push(targetNode.id)
+          // 「その他」ノード配下の実際の支出先を直接記録（エッジは存在しないため）
+          if (targetNode.metadata.aggregatedIds) {
+            for (const aggregatedId of targetNode.metadata.aggregatedIds) {
+              const aggregatedNode = nodes.find(n => n.id === aggregatedId)
+              if (aggregatedNode && aggregatedNode.type === 'recipient') {
+                const currentAmount = recipientMap.get(aggregatedId) || 0
+                // 「その他」ノードへのエッジの金額を、集約された支出先に均等配分
+                // （実際の金額比率は不明なため、簡易的に均等配分）
+                const perRecipientAmount = edge.value / targetNode.metadata.aggregatedIds.length
+                recipientMap.set(aggregatedId, currentAmount + perRecipientAmount)
+              }
+            }
           }
         }
         // 通常の支出先ノードなら記録
