@@ -233,9 +233,21 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
               <h2 className="text-lg font-semibold text-white truncate">
                 {selectedNode.name}
               </h2>
-              <p className="text-sm text-slate-400 mt-1">
-                {getNodeTypeLabel(selectedNode.type)}
-              </p>
+              {/* Hierarchy path or corporate type */}
+              {selectedNode.type === 'recipient' ? (
+                <p className="text-sm text-slate-400 mt-1">
+                  {selectedNode.metadata.corporateType || '分類なし'}
+                </p>
+              ) : selectedNode.metadata.hierarchyPath && selectedNode.metadata.hierarchyPath.length > 0 ? (
+                <p className="text-sm text-slate-400 mt-1">
+                  {selectedNode.metadata.hierarchyPath.map((path, index) => (
+                    <span key={index}>
+                      {index > 0 && <span className="mx-1">→</span>}
+                      <span>{path}</span>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
             </div>
             <button
               onClick={clearSelection}

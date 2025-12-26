@@ -266,7 +266,9 @@ async function main() {
         name: bureau,
         amount: 0,
         ministryId: ministry,
-        metadata: {},
+        metadata: {
+          hierarchyPath: [ministry],
+        },
       })
     }
     if (nodes.has(bureauNodeId)) {
@@ -283,7 +285,9 @@ async function main() {
         name: division,
         amount: 0,
         ministryId: ministry,
-        metadata: {},
+        metadata: {
+          hierarchyPath: [ministry, bureau].filter(Boolean),
+        },
       })
     }
     if (nodes.has(divisionNodeId)) {
