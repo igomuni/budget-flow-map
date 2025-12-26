@@ -80,6 +80,17 @@ export function SidePanel({ nodes, onNodeSelect }: SidePanelProps) {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [])
 
+  // Handle node selection (search result or history click)
+  const handleNodeSelect = useCallback((node: LayoutNode) => {
+    onNodeSelect(node)
+    setQuery('')
+    // Add to history (remove duplicates, keep latest at top)
+    setSearchHistory(prev => {
+      const filtered = prev.filter(n => n.id !== node.id)
+      return [node, ...filtered].slice(0, 10) // Keep last 10
+    })
+  }, [onNodeSelect])
+
   // Handle keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     // IME入力中（日本語変換中）はキー操作を無視
@@ -101,18 +112,7 @@ export function SidePanel({ nodes, onNodeSelect }: SidePanelProps) {
       setQuery('')
       inputRef.current?.blur()
     }
-  }, [searchResults, selectedIndex])
-
-  // Handle node selection (search result or history click)
-  const handleNodeSelect = useCallback((node: LayoutNode) => {
-    onNodeSelect(node)
-    setQuery('')
-    // Add to history (remove duplicates, keep latest at top)
-    setSearchHistory(prev => {
-      const filtered = prev.filter(n => n.id !== node.id)
-      return [node, ...filtered].slice(0, 10) // Keep last 10
-    })
-  }, [onNodeSelect])
+  }, [searchResults, selectedIndex, handleNodeSelect])
 
   // Format amount for display
   const formatAmount = (amount: number): string => {
@@ -202,7 +202,7 @@ export function SidePanel({ nodes, onNodeSelect }: SidePanelProps) {
                 </button>
               ))}
               <div className="p-2 text-xs text-slate-500 flex items-center justify-between">
-                <span>↑↓ 選択　Enter 決定　Esc 閉じる</span>
+                <span>↑↓ 選択 Enter 決定 Esc 閉じる</span>
                 <span>{searchResults.length}件</span>
               </div>
             </>

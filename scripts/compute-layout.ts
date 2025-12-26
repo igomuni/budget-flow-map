@@ -113,15 +113,15 @@ const MIN_NODE_HEIGHT = 2
 const NODE_VERTICAL_PADDING = 1
 const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング
 
-// TopN設定（デフォルト値、コマンドライン引数で変更可能）
-const DEFAULT_TOP_PROJECTS = 500  // Layer 3: 事業
-const DEFAULT_TOP_RECIPIENTS = 1000 // Layer 4: 支出先
+// TopN設定（デフォルト値 - 現在は未使用、クライアント側で動的フィルタリング）
+// const DEFAULT_TOP_PROJECTS = 500  // Layer 3: 事業
+// const DEFAULT_TOP_RECIPIENTS = 1000 // Layer 4: 支出先
 
 // 閾値（1兆円 = 1,000,000百万円）
 const AMOUNT_THRESHOLD = 1000000 // 百万円単位
 
 // 金額→高さの変換（閾値以下は最小高さ、閾値以上は線形スケール、最大高さ制限なし）
-function amountToHeight(amount: number, maxAmount: number, layer: number): number {
+function amountToHeight(amount: number): number {
   if (amount <= 0) return MIN_NODE_HEIGHT
 
   // 閾値以下は最小高さ
@@ -465,7 +465,9 @@ function findMinistryId(
 
 /**
  * 全体でTopNを超えるノードを府省庁ごとの"Other"ノードに集約
+ * （現在は未使用 - クライアント側で動的フィルタリング）
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function aggregateTopN(
   rawGraph: RawGraph,
   topProjects: number,

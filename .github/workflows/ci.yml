@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript type check
+        run: npx tsc --noEmit
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  data-pipeline-check:
+    name: Data Pipeline Check
+    runs-on: ubuntu-latest
+    # このジョブはデータパイプラインスクリプトの変更時のみ実行（オプション）
+    # 削除してもOK - layout.json.gzはリポジトリにコミット済み
+    if: false  # デフォルトでスキップ（有効にする場合は `if: true` に変更）
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout marumie-rssystem (sibling repo)
+        uses: actions/checkout@v4
+        with:
+          repository: igomuni/marumie-rssystem
+          path: ../marumie-rssystem
+          # If private repo, uncomment and add MARUMIE_RSSYSTEM_TOKEN to repo secrets
+          # token: ${{ secrets.MARUMIE_RSSYSTEM_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run data pipeline
+        run: npm run data:pipeline
+
+      - name: Verify layout.json generated
+        run: |
+          if [ ! -f "public/data/layout.json" ]; then
+            echo "Error: layout.json was not generated"
+            exit 1
+          fi
+          echo "✅ layout.json successfully generated"
+
+      - name: Upload layout data
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-data
+          path: public/data/layout.json
+          retention-days: 7
