@@ -10,29 +10,20 @@ import type { LayoutData, LayoutNode } from '@/types/layout'
 interface DeckGLCanvasProps {
   layoutData: LayoutData
   onViewStateChange?: (viewState: OrthographicViewState) => void
-  externalTarget?: [number, number] | null
-  externalZoom?: number
-  externalSelectedNodeId?: string | null
-  onNodeSelect?: (nodeId: string | null) => void
+  externalViewState?: OrthographicViewState | null
 }
 
 export function DeckGLCanvas({
   layoutData,
   onViewStateChange,
-  externalTarget,
-  externalZoom,
-  externalSelectedNodeId,
-  onNodeSelect
+  externalViewState,
 }: DeckGLCanvasProps) {
   const hoveredNodeId = useStore((state) => state.hoveredNodeId)
-  const storeSelectedNodeId = useStore((state) => state.selectedNodeId)
+  const selectedNodeId = useStore((state) => state.selectedNodeId)
   const setHoveredNode = useStore((state) => state.setHoveredNode)
   const setSelectedNode = useStore((state) => state.setSelectedNode)
   const showTooltip = useStore((state) => state.showTooltip)
   const hideTooltip = useStore((state) => state.hideTooltip)
-
-  // Use external selection if provided, otherwise use store
-  const selectedNodeId = externalSelectedNodeId ?? storeSelectedNodeId
 
   // Initialize view state centered on bounds with appropriate zoom
   const initialViewState = useMemo((): OrthographicViewState => {
@@ -50,25 +41,12 @@ export function DeckGLCanvas({
 
   const [viewState, setViewState] = useState<OrthographicViewState>(initialViewState)
 
-  // Handle external navigation (from minimap)
+  // Sync with external view state (from parent animation)
   useEffect(() => {
-    if (externalTarget) {
-      setViewState((prev) => ({
-        ...prev,
-        target: externalTarget,
-      }))
+    if (externalViewState) {
+      setViewState(externalViewState)
     }
-  }, [externalTarget])
-
-  // Handle external zoom change (from controls)
-  useEffect(() => {
-    if (externalZoom !== undefined) {
-      setViewState((prev) => ({
-        ...prev,
-        zoom: externalZoom,
-      }))
-    }
-  }, [externalZoom])
+  }, [externalViewState])
 
   // Notify parent of view state changes
   useEffect(() => {
@@ -201,14 +179,12 @@ export function DeckGLCanvas({
       if (info.object && 'id' in info.object) {
         const node = info.object as LayoutNode
         setSelectedNode(node.id, nodeMap.get(node.id) || null)
-        onNodeSelect?.(node.id)
       } else {
         // Click on empty space clears selection
         setSelectedNode(null, null)
-        onNodeSelect?.(null)
       }
     },
-    [setSelectedNode, nodeMap, onNodeSelect]
+    [setSelectedNode, nodeMap]
   )
 
   // Handle view state change

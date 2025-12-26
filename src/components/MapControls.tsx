@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 
 interface MapControlsProps {
   zoom: number
@@ -27,6 +27,8 @@ export function MapControls({
   onNodeWidthChange,
   onFitToScreen,
 }: MapControlsProps) {
+  const [showSettings, setShowSettings] = useState(false)
+
   const handleZoomIn = useCallback(() => {
     onZoomChange(Math.min(zoom + 0.5, maxZoom))
   }, [zoom, maxZoom, onZoomChange])
@@ -34,13 +36,6 @@ export function MapControls({
   const handleZoomOut = useCallback(() => {
     onZoomChange(Math.max(zoom - 0.5, minZoom))
   }, [zoom, minZoom, onZoomChange])
-
-  const handleZoomSlider = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onZoomChange(parseFloat(e.target.value))
-    },
-    [onZoomChange]
-  )
 
   const handleSpacingXSlider = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,202 +62,154 @@ export function MapControls({
   const handleResetSpacing = useCallback(() => {
     onNodeSpacingXChange(0)
     onNodeSpacingYChange(0)
-    onNodeWidthChange(50) // デフォルト幅
+    onNodeWidthChange(50)
   }, [onNodeSpacingXChange, onNodeSpacingYChange, onNodeWidthChange])
-
-  // Format spacing value for display
-  const formatSpacing = (value: number) => {
-    return `${Math.round(value)}px`
-  }
-
-  // Handle direct input for spacing X
-  const handleSpacingXInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = parseInt(e.target.value) || 0
-      onNodeSpacingXChange(Math.max(0, Math.min(100, value)))
-    },
-    [onNodeSpacingXChange]
-  )
-
-  // Handle direct input for spacing Y
-  const handleSpacingYInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = parseInt(e.target.value) || 0
-      onNodeSpacingYChange(Math.max(0, Math.min(100, value)))
-    },
-    [onNodeSpacingYChange]
-  )
-
-  // Handle direct input for node width
-  const handleNodeWidthInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const value = parseInt(e.target.value) || 10
-      onNodeWidthChange(Math.max(10, Math.min(200, value)))
-    },
-    [onNodeWidthChange]
-  )
-
-  // Handle direct input for zoom (in percentage)
-  // zoom = 0 means 100% (1px = 1px)
-  const handleZoomInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const percentage = parseFloat(e.target.value)
-      if (!isNaN(percentage)) {
-        // percentage = 100 * 2^zoom → zoom = log2(percentage / 100)
-        const zoomValue = Math.log2(percentage / 100)
-        onZoomChange(Math.max(minZoom, Math.min(maxZoom, zoomValue)))
-      }
-    },
-    [onZoomChange, minZoom, maxZoom]
-  )
 
   // Convert zoom to percentage for display (zoom=0 → 100%)
   const zoomPercentage = Math.round(Math.pow(2, zoom) * 100)
 
   return (
-    <div className="absolute bottom-4 left-4 z-20 flex flex-col gap-1">
-      {/* Zoom Controls - horizontal slider with magnifying glass */}
-      <div className="bg-white/95 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-2">
-        <button
-          onClick={handleZoomOut}
-          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors"
-          title="Zoom out"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-            <path d="M8 11h6" />
-          </svg>
-        </button>
-        <input
-          type="range"
-          min={minZoom}
-          max={maxZoom}
-          step={0.1}
-          value={zoom}
-          onChange={handleZoomSlider}
-          className="w-20 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-          title={`Zoom: ${zoom.toFixed(1)}`}
-        />
-        <input
-          type="number"
-          min={1}
-          max={6400}
-          step={1}
-          value={zoomPercentage}
-          onChange={handleZoomInput}
-          className="w-12 px-1 py-0.5 text-xs text-right text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <span className="text-xs text-gray-400">%</span>
-        <button
-          onClick={handleZoomIn}
-          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors"
-          title="Zoom in"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8" />
-            <path d="M21 21l-4.35-4.35" />
-            <path d="M11 8v6M8 11h6" />
-          </svg>
-        </button>
+    <>
+      {/* Main zoom controls - bottom right, Google Maps style */}
+      <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-1">
+        {/* Zoom In/Out buttons */}
+        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+          <button
+            onClick={handleZoomIn}
+            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors border-b border-gray-200"
+            title="ズームイン"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+            title="ズームアウト"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12h14" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Fit to screen button */}
         <button
           onClick={onFitToScreen}
-          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 active:bg-gray-200 rounded transition-colors ml-1 border-l border-gray-200 pl-2"
-          title="Fit to screen"
+          className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          title="全体を表示"
         >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3" />
           </svg>
         </button>
-      </div>
 
-      {/* Horizontal spacing */}
-      <div className="bg-white/95 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-2">
-        <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 12H3M21 12l-4-4M21 12l-4 4M3 12l4-4M3 12l4 4" />
-        </svg>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={nodeSpacingX}
-          onChange={handleSpacingXSlider}
-          className="w-20 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-          title={`追加間隔（横）: ${formatSpacing(nodeSpacingX)}`}
-        />
-        <input
-          type="number"
-          min={0}
-          max={100}
-          value={Math.round(nodeSpacingX)}
-          onChange={handleSpacingXInput}
-          className="w-12 px-1 py-0.5 text-xs text-right text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <span className="text-xs text-gray-400">px</span>
-      </div>
-
-      {/* Vertical spacing */}
-      <div className="bg-white/95 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-2">
-        <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M12 3v18M12 3l-4 4M12 3l4 4M12 21l-4-4M12 21l4-4" />
-        </svg>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={nodeSpacingY}
-          onChange={handleSpacingYSlider}
-          className="w-20 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-          title={`追加間隔（縦）: ${formatSpacing(nodeSpacingY)}`}
-        />
-        <input
-          type="number"
-          min={0}
-          max={100}
-          value={Math.round(nodeSpacingY)}
-          onChange={handleSpacingYInput}
-          className="w-12 px-1 py-0.5 text-xs text-right text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <span className="text-xs text-gray-400">px</span>
+        {/* Settings toggle button */}
         <button
-          onClick={handleResetSpacing}
-          className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-          title="Reset spacing"
+          onClick={() => setShowSettings(!showSettings)}
+          className={`w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center transition-colors ${
+            showSettings ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-100'
+          }`}
+          title="レイアウト設定"
         >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
-            <path d="M3 3v5h5" />
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
       </div>
 
-      {/* Node width */}
-      <div className="bg-white/95 backdrop-blur rounded-lg shadow-lg p-2 flex items-center gap-2">
-        <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="6" y="4" width="12" height="16" rx="2" />
-        </svg>
-        <input
-          type="range"
-          min={10}
-          max={200}
-          step={5}
-          value={nodeWidth}
-          onChange={handleNodeWidthSlider}
-          className="w-20 h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-          title={`Node width: ${formatSpacing(nodeWidth)}`}
-        />
-        <input
-          type="number"
-          min={10}
-          max={200}
-          value={Math.round(nodeWidth)}
-          onChange={handleNodeWidthInput}
-          className="w-12 px-1 py-0.5 text-xs text-right text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <span className="text-xs text-gray-400">px</span>
-      </div>
-    </div>
+      {/* Settings panel - slides up from settings button */}
+      {showSettings && (
+        <div className="absolute bottom-[200px] right-4 z-20 bg-white rounded-lg shadow-lg p-4 w-64">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-gray-800">レイアウト設定</h3>
+            <button
+              onClick={() => setShowSettings(false)}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {/* Zoom display */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                ズーム: {zoomPercentage}%
+              </label>
+              <input
+                type="range"
+                min={minZoom}
+                max={maxZoom}
+                step={0.1}
+                value={zoom}
+                onChange={(e) => onZoomChange(parseFloat(e.target.value))}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            {/* Horizontal spacing */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                横間隔: {Math.round(nodeSpacingX)}px
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={nodeSpacingX}
+                onChange={handleSpacingXSlider}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            {/* Vertical spacing */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                縦間隔: {Math.round(nodeSpacingY)}px
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={nodeSpacingY}
+                onChange={handleSpacingYSlider}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            {/* Node width */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                ノード幅: {Math.round(nodeWidth)}px
+              </label>
+              <input
+                type="range"
+                min={10}
+                max={200}
+                step={5}
+                value={nodeWidth}
+                onChange={handleNodeWidthSlider}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            {/* Reset button */}
+            <button
+              onClick={handleResetSpacing}
+              className="w-full py-2 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg transition-colors"
+            >
+              リセット
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

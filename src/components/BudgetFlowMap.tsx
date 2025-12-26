@@ -1,21 +1,19 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
 import { useDynamicTopN } from '@/hooks/useDynamicTopN'
+import { useStore } from '@/store'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
-import { SearchPanel } from './SearchPanel'
-import { InfoPanel } from './InfoPanel/InfoPanel'
+import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
-import type { LayoutData } from '@/types/layout'
+import type { LayoutData, LayoutNode } from '@/types/layout'
 
 export function BudgetFlowMap() {
   const { data: rawData, loading, error } = useLayoutData()
   const [viewState, setViewState] = useState<OrthographicViewState | null>(null)
-  const [navigateTarget, setNavigateTarget] = useState<[number, number] | null>(null)
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
   const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
   const [nodeWidth, setNodeWidth] = useState(50) // px単位
@@ -23,43 +21,92 @@ export function BudgetFlowMap() {
   const [topRecipients, setTopRecipients] = useState(1000)
   const [threshold, setThreshold] = useState(1e12) // 1兆円 = 1,000,000,000,000円
 
+  // Zustand store for selection state
+  const setSelectedNode = useStore((state) => state.setSelectedNode)
+
+  // Animation ref for smooth transitions
+  const animationRef = useRef<number | null>(null)
+
+  // Cleanup animation on unmount
+  useEffect(() => {
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current)
+      }
+    }
+  }, [])
+
   // 動的TopNフィルタリングを適用
   const data = useDynamicTopN(rawData, { topProjects, topRecipients, threshold })
 
-  // Handle search result selection - navigate to node and select it
-  const handleSearchSelect = useCallback((nodeId: string, x: number, y: number) => {
-    // Find node in scaled data to get correct position
-    setSelectedNodeId(nodeId)
-    setNavigateTarget([x, y])
-    // Also zoom in to make the node visible
-    const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
-    setViewState(prev => ({
-      ...prev,
-      target: [x, y] as [number, number],
-      zoom: Math.max(currentZoom, -2), // Zoom in if too far out
-      minZoom: -13,
-      maxZoom: 6,
-    }))
-    setTimeout(() => setNavigateTarget(null), 100)
+  // Animate to target position with easing (GoogleMap風)
+  const animateTo = useCallback((targetX: number, targetY: number, targetZoom: number, duration: number = 500) => {
+    // Cancel any existing animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+    }
+
+    const startTime = performance.now()
+    const startX = viewState?.target?.[0] ?? 0
+    const startY = viewState?.target?.[1] ?? 0
+    const startZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+
+    // Easing function (ease-out cubic)
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const easedProgress = easeOutCubic(progress)
+
+      const newX = startX + (targetX - startX) * easedProgress
+      const newY = startY + (targetY - startY) * easedProgress
+      const newZoom = startZoom + (targetZoom - startZoom) * easedProgress
+
+      setViewState({
+        target: [newX, newY],
+        zoom: newZoom,
+        minZoom: -13,
+        maxZoom: 6,
+      })
+
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate)
+      } else {
+        animationRef.current = null
+      }
+    }
+
+    animationRef.current = requestAnimationFrame(animate)
   }, [viewState])
+
+  // Handle search result selection - navigate to node and select it
+  const handleSearchSelect = useCallback((node: LayoutNode) => {
+    // Set selected node in store (opens InfoPanel)
+    setSelectedNode(node.id, node)
+
+    // Animate to node position (GoogleMap風スムーズアニメーション)
+    const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+    const targetZoom = Math.max(currentZoom, -2) // Zoom in if too far out
+    animateTo(node.x, node.y, targetZoom, 600)
+  }, [viewState, setSelectedNode, animateTo])
 
   const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
     setViewState(vs)
   }, [])
 
   const handleMinimapNavigate = useCallback((x: number, y: number) => {
-    setNavigateTarget([x, y])
-    // Reset after a tick to allow re-navigation to same spot
-    setTimeout(() => setNavigateTarget(null), 100)
-  }, [])
+    // Animate to minimap click position
+    const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+    animateTo(x, y, currentZoom, 300)
+  }, [viewState, animateTo])
 
   // Handle zoom change from controls
   const handleZoomChange = useCallback((newZoom: number) => {
-    setViewState((prev) => {
-      if (!prev) return prev
-      return { ...prev, zoom: newZoom }
-    })
-  }, [])
+    const targetX = viewState?.target?.[0] ?? 0
+    const targetY = viewState?.target?.[1] ?? 0
+    animateTo(targetX, targetY, newZoom, 200)
+  }, [viewState, animateTo])
 
   // Add spacing to layout data (px単位で加算)
   const scaledData = useMemo((): LayoutData | null => {
@@ -219,8 +266,11 @@ export function BudgetFlowMap() {
 
   return (
     <div className="relative h-full w-full flex">
-      {/* Info Panel on left */}
-      <InfoPanel />
+      {/* Side Panel on left (integrated search + info) */}
+      <SidePanel
+        nodes={scaledData.nodes}
+        onNodeSelect={handleSearchSelect}
+      />
       {/* Main content area */}
       <div className="flex-1 relative">
         {/* Main canvas */}
@@ -228,10 +278,7 @@ export function BudgetFlowMap() {
           <DeckGLCanvas
             layoutData={scaledData}
             onViewStateChange={handleViewStateChange}
-            externalTarget={navigateTarget}
-            externalZoom={currentZoom}
-            externalSelectedNodeId={selectedNodeId}
-            onNodeSelect={setSelectedNodeId}
+            externalViewState={viewState}
           />
         </div>
         {/* Minimap on right */}
@@ -240,11 +287,6 @@ export function BudgetFlowMap() {
           viewState={effectiveViewState}
           onNavigate={handleMinimapNavigate}
           width={MINIMAP_WIDTH}
-        />
-        {/* Search Panel */}
-        <SearchPanel
-          nodes={scaledData.nodes}
-          onNodeSelect={handleSearchSelect}
         />
         {/* TopN Settings */}
         <TopNSettings
