@@ -377,10 +377,8 @@ async function main() {
 
     const projectNodeId = createNodeId('project', ministry, projectId)
 
-    // 支出先ノードID（法人番号があれば使用、なければ名前）
-    const recipientNodeId = corporateNumber
-      ? createNodeId('recipient', corporateNumber)
-      : createNodeId('recipient', recipientName)
+    // 支出先ノードID（名前ベースで統一 - ADR: 20251226_1133_adr-recipient-duplicate.md）
+    const recipientNodeId = createNodeId('recipient', recipientName)
 
     // 支出先ノード作成
     if (!nodes.has(recipientNodeId)) {
@@ -395,8 +393,37 @@ async function main() {
           corporateNumber: corporateNumber || undefined,
           location: row.所在地 || undefined,
           corporateType: CORPORATE_TYPE_MAP[row.法人種別] || row.法人種別 || undefined,
+          sourceMinistries: [ministry],
         },
       })
+    } else {
+      // 既存ノードがある場合、メタデータをマージ
+      const existingNode = nodes.get(recipientNodeId)!
+      const existingMeta = existingNode.metadata as {
+        corporateNumber?: string
+        location?: string
+        corporateType?: string
+        sourceMinistries?: string[]
+      }
+
+      // 法人番号がない場合は新しいデータでマージ
+      if (!existingMeta.corporateNumber && corporateNumber) {
+        existingMeta.corporateNumber = corporateNumber
+      }
+      if (!existingMeta.location && row.所在地) {
+        existingMeta.location = row.所在地
+      }
+      if (!existingMeta.corporateType && row.法人種別) {
+        existingMeta.corporateType = CORPORATE_TYPE_MAP[row.法人種別] || row.法人種別
+      }
+
+      // 府省庁リストに追加（重複除去）
+      if (!existingMeta.sourceMinistries) {
+        existingMeta.sourceMinistries = []
+      }
+      if (!existingMeta.sourceMinistries.includes(ministry)) {
+        existingMeta.sourceMinistries.push(ministry)
+      }
     }
     const recipientNode = nodes.get(recipientNodeId)!
     recipientNode.amount += amount

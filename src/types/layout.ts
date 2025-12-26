@@ -26,6 +26,7 @@ export interface NodeMetadata {
   corporateNumber?: string
   location?: string
   corporateType?: string
+  sourceMinistries?: string[]  // 支出元府省庁リスト（複数府省から支出を受ける場合）
 
   // Aggregation metadata (for "Other" nodes)
   isOther?: boolean

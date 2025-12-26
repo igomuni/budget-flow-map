@@ -60,13 +60,23 @@ function RecipientInfo({ node }: { node: LayoutNode }) {
         </InfoSection>
       )}
 
-      {/* Connected ministries (if multiple) */}
-      {node.ministryId && (
+      {/* Connected ministries */}
+      {node.metadata.sourceMinistries && node.metadata.sourceMinistries.length > 0 ? (
+        <InfoSection title="支出元府省">
+          <ul className="text-slate-200 space-y-1">
+            {node.metadata.sourceMinistries.map((ministry, index) => (
+              <li key={index} className="flex items-center gap-2">
+                <span className="text-slate-500">・</span>
+                <span>{ministry}</span>
+              </li>
+            ))}
+          </ul>
+        </InfoSection>
+      ) : node.ministryId ? (
         <InfoSection title="支出元府省">
           <p className="text-slate-200">{node.ministryId}</p>
-          <p className="text-xs text-slate-500 mt-1">※ 複数府省から支出を受けている場合があります</p>
         </InfoSection>
-      )}
+      ) : null}
 
       {/* Node metadata */}
       <InfoSection title="データ情報">
