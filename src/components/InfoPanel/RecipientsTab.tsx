@@ -37,25 +37,25 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
         const targetNode = nodes.find(n => n.id === edge.targetId)
         if (!targetNode) continue
 
-        // 支出先ノードなら記録
-        if (targetNode.type === 'recipient') {
+        // 「その他」ノードの場合、集約されたノードを探索対象に追加（記録はしない）
+        if (targetNode.metadata.isOther && targetNode.metadata.aggregatedIds) {
+          for (const aggregatedId of targetNode.metadata.aggregatedIds) {
+            if (!visited.has(aggregatedId)) {
+              visited.add(aggregatedId)
+              queue.push(aggregatedId)
+            }
+          }
+        }
+        // 支出先ノードなら記録（ただし「その他」ノードは除外）
+        else if (targetNode.type === 'recipient') {
           const currentAmount = recipientMap.get(targetNode.id) || 0
           recipientMap.set(targetNode.id, currentAmount + edge.value)
-        } else {
-          // 支出先以外のノードなら探索キューに追加
+        }
+        // 支出先以外のノードなら探索キューに追加
+        else {
           if (!visited.has(targetNode.id)) {
             visited.add(targetNode.id)
             queue.push(targetNode.id)
-
-            // 「その他」ノードの場合、集約されたノードも探索対象に追加
-            if (targetNode.metadata.isOther && targetNode.metadata.aggregatedIds) {
-              for (const aggregatedId of targetNode.metadata.aggregatedIds) {
-                if (!visited.has(aggregatedId)) {
-                  visited.add(aggregatedId)
-                  queue.push(aggregatedId)
-                }
-              }
-            }
           }
         }
       }
