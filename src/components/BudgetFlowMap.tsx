@@ -269,6 +269,7 @@ export function BudgetFlowMap() {
       {/* Side Panel on left (integrated search + info) */}
       <SidePanel
         nodes={scaledData.nodes}
+        edges={scaledData.edges}
         onNodeSelect={handleSearchSelect}
       />
       {/* Main content area */}

@@ -3,15 +3,16 @@ import { useStore } from '@/store'
 import { BasicInfoTab } from './InfoPanel/BasicInfoTab'
 import { RecipientsTab } from './InfoPanel/RecipientsTab'
 import { FlowContextTab } from './InfoPanel/FlowContextTab'
-import type { LayoutNode } from '@/types/layout'
+import type { LayoutNode, LayoutEdge } from '@/types/layout'
 import type { InfoPanelTab } from '@/types/store'
 
 interface SidePanelProps {
   nodes: LayoutNode[]
+  edges: LayoutEdge[]
   onNodeSelect: (node: LayoutNode) => void
 }
 
-export function SidePanel({ nodes, onNodeSelect }: SidePanelProps) {
+export function SidePanel({ nodes, edges, onNodeSelect }: SidePanelProps) {
   const selectedNode = useStore((state) => state.selectedNodeData)
   const activeTab = useStore((state) => state.activeTab)
   const setActiveTab = useStore((state) => state.setActiveTab)
@@ -254,7 +255,7 @@ export function SidePanel({ nodes, onNodeSelect }: SidePanelProps) {
           {/* Tab content */}
           <div className="flex-1 overflow-auto p-4">
             {activeTab === 'basic' && <BasicInfoTab node={selectedNode} />}
-            {activeTab === 'recipients' && <RecipientsTab node={selectedNode} />}
+            {activeTab === 'recipients' && <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} />}
             {activeTab === 'flow' && <FlowContextTab node={selectedNode} />}
           </div>
         </>
