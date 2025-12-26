@@ -558,36 +558,39 @@ function aggregateTopN(
     }
   }
 
-  // Layer 4(支出先): TopN内のノードと、府省庁ごとのOtherノード
-  for (const [ministryId, layerMap] of nodesByMinistry) {
+  // Layer 4(支出先): TopN内のノードと、府省庁横断の単一「その他」ノード
+  const allRecipients: RawNode[] = []
+  for (const [, layerMap] of nodesByMinistry) {
     const recipients = layerMap.get(4) || []
-    const kept = recipients.filter(n => keptRecipients.has(n.id))
-    const aggregated = recipients.filter(n => !keptRecipients.has(n.id))
+    allRecipients.push(...recipients)
+  }
 
-    resultNodes.push(...kept)
+  const keptRecipientsNodes = allRecipients.filter(n => keptRecipients.has(n.id))
+  const aggregatedRecipientsNodes = allRecipients.filter(n => !keptRecipients.has(n.id))
 
-    if (aggregated.length > 0) {
-      const ministryNode = nodeMap.get(ministryId)
-      const otherNodeId = `other_${ministryId}_layer4`
-      const totalAmount = aggregated.reduce((sum, n) => sum + n.amount, 0)
+  resultNodes.push(...keptRecipientsNodes)
 
-      const otherNode: RawNode = {
-        id: otherNodeId,
-        type: 'recipient',
-        layer: 4,
-        name: `その他の支出先 (${aggregated.length}件)`,
-        amount: totalAmount,
-        ministryId: ministryNode?.name || '',
-        metadata: {
-          isOther: true,
-          aggregatedCount: aggregated.length,
-          aggregatedIds: aggregated.map(n => n.id)
-        }
+  if (aggregatedRecipientsNodes.length > 0) {
+    const otherNodeId = 'other_all_layer4'
+    const totalAmount = aggregatedRecipientsNodes.reduce((sum, n) => sum + n.amount, 0)
+
+    const otherNode: RawNode = {
+      id: otherNodeId,
+      type: 'recipient',
+      layer: 4,
+      name: `その他の支出先 (${aggregatedRecipientsNodes.length}件)`,
+      amount: totalAmount,
+      ministryId: '', // 府省庁横断なのでministryIdは空
+      metadata: {
+        isOther: true,
+        aggregatedCount: aggregatedRecipientsNodes.length,
+        aggregatedIds: aggregatedRecipientsNodes.map(n => n.id)
       }
-
-      resultNodes.push(otherNode)
-      otherNodeIds.set(`${ministryId}:4`, otherNodeId)
     }
+
+    resultNodes.push(otherNode)
+    // 全府省庁の支出先を単一の「その他」ノードにマッピング
+    otherNodeIds.set('all:4', otherNodeId)
   }
 
   // エッジを再構築（Otherノードへのリダイレクト）
@@ -617,10 +620,15 @@ function aggregateTopN(
 
     // ターゲットが集約された場合
     if (aggregatedNodeIds.has(edge.targetId)) {
-      const ministryId = findMinistryIdForNode(target, nodeMap, rawGraph.edges)
-      if (ministryId) {
-        const key = `${ministryId}:${target.layer}`
-        newTargetId = otherNodeIds.get(key) || edge.targetId
+      // Layer 4(支出先)は府省庁横断の単一「その他」ノード
+      if (target.layer === 4) {
+        newTargetId = otherNodeIds.get('all:4') || edge.targetId
+      } else {
+        const ministryId = findMinistryIdForNode(target, nodeMap, rawGraph.edges)
+        if (ministryId) {
+          const key = `${ministryId}:${target.layer}`
+          newTargetId = otherNodeIds.get(key) || edge.targetId
+        }
       }
     }
 
