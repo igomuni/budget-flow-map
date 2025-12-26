@@ -37,16 +37,15 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
         const targetNode = nodes.find(n => n.id === edge.targetId)
         if (!targetNode) continue
 
-        // 「その他」ノードの場合、集約されたノードを探索対象に追加（記録はしない）
-        if (targetNode.metadata.isOther && targetNode.metadata.aggregatedIds) {
-          for (const aggregatedId of targetNode.metadata.aggregatedIds) {
-            if (!visited.has(aggregatedId)) {
-              visited.add(aggregatedId)
-              queue.push(aggregatedId)
-            }
+        // 支出先ノードで「その他」ノードの場合、リストには記録しないが探索は続ける
+        if (targetNode.type === 'recipient' && targetNode.metadata.isOther) {
+          // 「その他」ノードは記録しないが、配下の実際の支出先を探索するためキューに追加
+          if (!visited.has(targetNode.id)) {
+            visited.add(targetNode.id)
+            queue.push(targetNode.id)
           }
         }
-        // 支出先ノードなら記録（ただし「その他」ノードは除外）
+        // 通常の支出先ノードなら記録
         else if (targetNode.type === 'recipient') {
           const currentAmount = recipientMap.get(targetNode.id) || 0
           recipientMap.set(targetNode.id, currentAmount + edge.value)
