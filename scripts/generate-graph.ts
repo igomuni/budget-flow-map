@@ -388,7 +388,7 @@ async function main() {
         layer: 4,
         name: recipientName,
         amount: 0,
-        ministryId: ministry,
+        // ministryIdは省略（支出先は府省庁横断、sourceministriesを使用）
         metadata: {
           corporateNumber: corporateNumber || undefined,
           location: row.所在地 || undefined,

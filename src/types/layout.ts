@@ -43,7 +43,7 @@ export interface LayoutNode {
   layer: LayerIndex
   name: string
   amount: number
-  ministryId: string
+  ministryId?: string  // Optional: 支出先（Layer 4）では使用しない
   x: number        // Center X coordinate
   y: number        // Center Y coordinate
   width: number    // Node rectangle width
