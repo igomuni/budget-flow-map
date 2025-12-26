@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useStore } from '@/store'
 import { BasicInfoTab } from './InfoPanel/BasicInfoTab'
 import { RecipientsTab } from './InfoPanel/RecipientsTab'
+import { ProjectsTab } from './InfoPanel/ProjectsTab'
 import { FlowContextTab } from './InfoPanel/FlowContextTab'
 import type { LayoutNode, LayoutEdge } from '@/types/layout'
 import type { InfoPanelTab } from '@/types/store'
@@ -129,11 +130,21 @@ export function SidePanel({ nodes, edges, onNodeSelect }: SidePanelProps) {
     return names[layer] || ''
   }
 
-  const tabs: { key: InfoPanelTab; label: string }[] = [
-    { key: 'basic', label: '基本情報' },
-    { key: 'recipients', label: '支出先' },
-    { key: 'flow', label: 'フロー' },
-  ]
+  // タブ構成：支出先ノードの場合は「事業」タブ、それ以外は「支出先」タブ
+  const tabs: { key: InfoPanelTab; label: string }[] = useMemo(() => {
+    if (selectedNode?.type === 'recipient') {
+      return [
+        { key: 'basic', label: '基本情報' },
+        { key: 'recipients', label: '事業' }, // recipients tabキーを再利用して「事業」を表示
+        { key: 'flow', label: 'フロー' },
+      ]
+    }
+    return [
+      { key: 'basic', label: '基本情報' },
+      { key: 'recipients', label: '支出先' },
+      { key: 'flow', label: 'フロー' },
+    ]
+  }, [selectedNode?.type])
 
   return (
     <aside className="w-96 h-full bg-slate-800 shadow-lg flex flex-col z-10 border-r border-slate-700 shrink-0">
@@ -255,7 +266,13 @@ export function SidePanel({ nodes, edges, onNodeSelect }: SidePanelProps) {
           {/* Tab content */}
           <div className="flex-1 overflow-auto p-4">
             {activeTab === 'basic' && <BasicInfoTab node={selectedNode} />}
-            {activeTab === 'recipients' && <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} />}
+            {activeTab === 'recipients' && (
+              selectedNode.type === 'recipient' ? (
+                <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} />
+              ) : (
+                <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} />
+              )
+            )}
             {activeTab === 'flow' && <FlowContextTab node={selectedNode} />}
           </div>
         </>

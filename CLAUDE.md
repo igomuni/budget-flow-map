@@ -99,6 +99,40 @@ CSVデータ → normalize_csv.py → generate-graph.ts → compute-layout.ts �
 | 中間（2-4x） | 局名まで |
 | 詳細（5x+） | 事業名まで |
 
+## Git運用ルール
+
+**mainブランチ保護（重要）**
+
+- mainブランチで直接作業することを禁止
+- 必ずfeatureブランチを作成してから作業
+- PR経由でのみmainへマージ
+- マージ後は必ず `git pull` でローカルを同期
+
+**推奨ワークフロー:**
+
+```bash
+# 1. 最新のmainを取得
+git checkout main
+git pull origin main
+
+# 2. featureブランチ作成
+git checkout -b feat/your-feature-name
+
+# 3. 作業 → コミット → push
+git add .
+git commit -m "..."
+git push -u origin feat/your-feature-name
+
+# 4. PR作成 → マージ
+
+# 5. ローカルmainを同期
+git checkout main
+git pull origin main
+
+# 6. 作業ブランチ削除（任意）
+git branch -d feat/your-feature-name
+```
+
 ## 開発コマンド
 
 ```bash
