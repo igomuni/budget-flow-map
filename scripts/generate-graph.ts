@@ -371,7 +371,12 @@ async function main() {
     const ministry = row.府省庁
     const recipientName = row.支出先名
     const corporateNumber = row.法人番号
-    const amount = parseAmount(row.金額) || parseAmount(row.支出先の合計支出額)
+
+    // CSVには各支出先に対して2種類の行がある:
+    // 1. サマリー行: 支出先の合計支出額のみ記載、契約概要は空
+    // 2. 詳細行: 金額と契約概要が記載
+    // 詳細行のみを使用して重複を避ける
+    const amount = parseAmount(row.金額)
 
     if (!recipientName || !amount) continue
 

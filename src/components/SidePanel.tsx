@@ -10,10 +10,12 @@ import type { InfoPanelTab } from '@/types/store'
 interface SidePanelProps {
   nodes: LayoutNode[]
   edges: LayoutEdge[]
+  rawNodes: LayoutNode[]
+  rawEdges: LayoutEdge[]
   onNodeSelect: (node: LayoutNode) => void
 }
 
-export function SidePanel({ nodes, edges, onNodeSelect }: SidePanelProps) {
+export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: SidePanelProps) {
   const selectedNode = useStore((state) => state.selectedNodeData)
   const activeTab = useStore((state) => state.activeTab)
   const setActiveTab = useStore((state) => state.setActiveTab)
@@ -268,9 +270,9 @@ export function SidePanel({ nodes, edges, onNodeSelect }: SidePanelProps) {
             {activeTab === 'basic' && <BasicInfoTab node={selectedNode} />}
             {activeTab === 'recipients' && (
               selectedNode.type === 'recipient' ? (
-                <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} />
+                <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
               ) : (
-                <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} />
+                <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
               )
             )}
             {activeTab === 'flow' && <FlowContextTab node={selectedNode} />}

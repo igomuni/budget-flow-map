@@ -6,6 +6,8 @@ interface ProjectsTabProps {
   node: LayoutNode
   edges: LayoutEdge[]
   nodes: LayoutNode[]
+  rawNodes: LayoutNode[]
+  rawEdges: LayoutEdge[]
 }
 
 interface ProjectWithAmount {
@@ -13,70 +15,45 @@ interface ProjectWithAmount {
   amount: number // エッジの実際の支出金額（事業予算ではない）
 }
 
-export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
-  // この支出先への入エッジを辿って、事業ノードとその支出金額を集計
+export function ProjectsTab({ node, rawNodes, rawEdges }: ProjectsTabProps) {
+  // 全事業の総額ランキングを計算（TopN判定用）
+  const globalProjectRanking = useMemo(() => {
+    const allProjects = rawNodes
+      .filter(n => n.type === 'project')
+      .sort((a, b) => b.amount - a.amount)
+
+    const rankMap = new Map<string, number>()
+    allProjects.forEach((project, index) => {
+      rankMap.set(project.id, index + 1)
+    })
+    return rankMap
+  }, [rawNodes])
+
+  // この支出先に支出している事業を集計（元データから直接フィルタ）
   const projects = useMemo((): ProjectWithAmount[] => {
     // 支出先ノード以外は空配列を返す
     if (node.type !== 'recipient') {
       return []
     }
-    const projectMap = new Map<string, number>() // projectId -> 累積支出金額
 
-    // この支出先への直接の入エッジを取得
-    const incomingEdges = edges.filter(edge => edge.targetId === node.id)
+    // この支出先への入エッジを取得
+    const incomingEdges = rawEdges.filter(e => e.targetId === node.id)
+    const projectIds = new Set(incomingEdges.map(e => e.sourceId))
 
-    for (const edge of incomingEdges) {
-      const sourceNode = nodes.find(n => n.id === edge.sourceId)
-      if (!sourceNode) continue
+    // 事業ノードのみフィルタ
+    return rawNodes
+      .filter(n => n.type === 'project' && projectIds.has(n.id))
+      .map(project => {
+        // この事業からこの支出先への金額
+        const amount = incomingEdges
+          .filter(e => e.sourceId === project.id)
+          .reduce((sum, e) => sum + e.value, 0)
 
-      // 事業ノードなら記録
-      if (sourceNode.type === 'project') {
-        const currentAmount = projectMap.get(sourceNode.id) || 0
-        projectMap.set(sourceNode.id, currentAmount + edge.value)
-      }
-    }
-
-    // 「その他の支出先」ノードを経由している場合の処理
-    // この支出先が「その他の支出先」ノードに集約されている可能性がある
-    // その場合、「その他の支出先」ノードへの入エッジから事業を探索
-    const otherRecipientNodes = nodes.filter(
-      n => n.type === 'recipient' &&
-           n.metadata.isOther &&
-           n.metadata.aggregatedIds?.includes(node.id)
-    )
-
-    for (const otherNode of otherRecipientNodes) {
-      const otherIncomingEdges = edges.filter(edge => edge.targetId === otherNode.id)
-
-      for (const edge of otherIncomingEdges) {
-        const sourceNode = nodes.find(n => n.id === edge.sourceId)
-        if (!sourceNode) continue
-
-        if (sourceNode.type === 'project') {
-          const currentAmount = projectMap.get(sourceNode.id) || 0
-          // 「その他」ノードへのエッジ金額を、集約された支出先数で均等配分
-          const aggregatedCount = otherNode.metadata.aggregatedIds?.length || 1
-          const perRecipientAmount = edge.value / aggregatedCount
-          projectMap.set(sourceNode.id, currentAmount + perRecipientAmount)
-        }
-      }
-    }
-
-    // Map を配列に変換
-    const projectList: ProjectWithAmount[] = []
-    for (const [projectId, amount] of projectMap.entries()) {
-      const projectNode = nodes.find(n => n.id === projectId)
-      if (projectNode && projectNode.type === 'project') {
-        projectList.push({
-          node: projectNode,
-          amount // エッジの実際の支出金額（事業予算ではない）
-        })
-      }
-    }
-
-    // 金額降順でソート
-    return projectList.sort((a, b) => b.amount - a.amount)
-  }, [node.id, node.type, edges, nodes])
+        return { node: project, amount }
+      })
+      .filter(p => p.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+  }, [node.type, node.id, rawNodes, rawEdges])
 
   if (node.type !== 'recipient') {
     return (
@@ -129,6 +106,7 @@ export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
           {projects.map(({ node: projectNode, amount }, index) => {
             const percentage = (amount / totalAmount) * 100
             const isZeroBudget = projectNode.amount === 0 && amount > 0
+            const globalRank = globalProjectRanking.get(projectNode.id)
 
             return (
               <div
@@ -137,7 +115,14 @@ export function ProjectsTab({ node, edges, nodes }: ProjectsTabProps) {
               >
                 {/* Rank and name */}
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 mt-0.5">#{index + 1}</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-xs font-medium text-slate-500">#{index + 1}</span>
+                    {globalRank && (
+                      <span className="text-[10px] text-slate-600" title="全体順位">
+                        (Top{globalRank})
+                      </span>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white">
                       {projectNode.name}
