@@ -53,6 +53,11 @@ export function getNodeColor(node: LayoutNode): [number, number, number, number]
     return [244, 67, 54, 255] // Vibrant red (Material Design Red 500)
   }
 
+  // Layer 0-3 must have ministryId
+  if (!node.ministryId) {
+    return [128, 128, 128, 255] // Fallback gray
+  }
+
   const baseColor = getMinistryColor(node.ministryId)
   const saturationMultiplier = SATURATION_BY_LAYER[node.layer]
 

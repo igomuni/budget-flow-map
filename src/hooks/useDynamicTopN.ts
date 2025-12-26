@@ -55,7 +55,7 @@ export function useDynamicTopN(
     // 府省庁ごとの事業集約データ
     const projectsByMinistry = new Map<string, LayoutNode[]>()
     for (const node of originalData.nodes) {
-      if (node.layer === 3 && aggregatedProjectIds.has(node.id)) {
+      if (node.layer === 3 && aggregatedProjectIds.has(node.id) && node.ministryId) {
         if (!projectsByMinistry.has(node.ministryId)) {
           projectsByMinistry.set(node.ministryId, [])
         }
@@ -79,7 +79,7 @@ export function useDynamicTopN(
     // Layer 0-2を府省庁ごとにグループ化
     const nodesByMinistryByLayer = new Map<string, Map<number, LayoutNode[]>>()
     for (const node of originalData.nodes) {
-      if (node.layer <= 2) {
+      if (node.layer <= 2 && node.ministryId) {
         if (!nodesByMinistryByLayer.has(node.ministryId)) {
           nodesByMinistryByLayer.set(node.ministryId, new Map())
         }
@@ -112,7 +112,7 @@ export function useDynamicTopN(
     // Layer 3 (事業) を府省庁ごとにグループ化
     const projectsByMinistryForLayout = new Map<string, LayoutNode[]>()
     for (const node of originalData.nodes) {
-      if (node.layer === 3 && keptProjectIds.has(node.id)) {
+      if (node.layer === 3 && keptProjectIds.has(node.id) && node.ministryId) {
         if (!projectsByMinistryForLayout.has(node.ministryId)) {
           projectsByMinistryForLayout.set(node.ministryId, [])
         }
@@ -308,13 +308,22 @@ export function useDynamicTopN(
       const firstRecipient = aggregatedRecipients[0]
       const otherHeight = Math.max(MIN_HEIGHT, Math.log10(totalAmount + 1) * 2)
 
+      // 集約された支出先の全sourceministriesを収集
+      const allSourceMinistries = new Set<string>()
+      for (const node of aggregatedRecipients) {
+        if (node.metadata?.sourceMinistries) {
+          for (const ministry of node.metadata.sourceMinistries) {
+            allSourceMinistries.add(ministry)
+          }
+        }
+      }
+
       otherRecipientNode = {
         id: `other_recipients_layer4_dynamic`,
         type: 'recipient',
         layer: 4,
         name: `その他の支出先 (${aggregatedRecipients.length}件)`,
         amount: totalAmount,
-        ministryId: '',
         x: firstRecipient.x,
         y: recipientY + otherHeight / 2,
         width: firstRecipient.width,
@@ -322,7 +331,8 @@ export function useDynamicTopN(
         metadata: {
           isOther: true,
           aggregatedCount: aggregatedRecipients.length,
-          aggregatedIds: aggregatedRecipients.map(n => n.id)
+          aggregatedIds: aggregatedRecipients.map(n => n.id),
+          sourceMinistries: Array.from(allSourceMinistries).sort()
         }
       }
       newNodes.push(otherRecipientNode)
@@ -338,7 +348,7 @@ export function useDynamicTopN(
 
       if (aggregatedProjectIds.has(edge.sourceId)) {
         const sourceNode = originalData.nodes.find(n => n.id === edge.sourceId)
-        if (sourceNode) {
+        if (sourceNode?.ministryId) {
           const otherNode = otherProjectMap.get(sourceNode.ministryId)
           if (otherNode) newSourceId = otherNode.id
         }
@@ -346,7 +356,7 @@ export function useDynamicTopN(
 
       if (aggregatedProjectIds.has(edge.targetId)) {
         const targetNode = originalData.nodes.find(n => n.id === edge.targetId)
-        if (targetNode) {
+        if (targetNode?.ministryId) {
           const otherNode = otherProjectMap.get(targetNode.ministryId)
           if (otherNode) newTargetId = otherNode.id
         }
