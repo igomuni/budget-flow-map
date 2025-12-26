@@ -198,7 +198,11 @@ Layout must be **stable across interactions** to preserve mental maps.
 - BFS traversal to highlight all ancestors and descendants
 - Selected node: gold stroke (3px) for emphasis (fill unchanged)
 - Display detailed information in left-side panel
-- Tab switching: Basic Info / Related Recipients / Flow Context
+  - Show hierarchy path (Ministry → Bureau → Division) or type (for recipients) below node name
+  - Tab switching: Basic Info / Recipients/Projects List / Flow Context
+  - Basic Info tab: Total amount/budget, corporate number, location, data information, etc.
+  - Recipients tab (org/project nodes): All recipients under this node, sorted by amount, with TopN ranking
+  - Projects tab (recipient nodes): All projects spending to this recipient, with TopN ranking
 - Viewport does NOT change (no drill-down)
 
 **Zoom/Pan**:
