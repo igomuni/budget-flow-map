@@ -20,14 +20,6 @@ export function BasicInfoTab({ node }: BasicInfoTabProps) {
 function RecipientInfo({ node }: { node: LayoutNode }) {
   return (
     <div className="space-y-4">
-      {/* Header badge */}
-      <div className="bg-red-600/20 border border-red-500/30 rounded-lg p-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs px-2 py-0.5 bg-red-600/50 text-red-200 rounded">支出先</span>
-          <span className="text-red-200 text-sm">法人・個人</span>
-        </div>
-      </div>
-
       {/* Amount */}
       <InfoSection title="受取総額">
         <p className="text-2xl font-bold text-white">{formatAmount(node.amount)}</p>
@@ -49,7 +41,7 @@ function RecipientInfo({ node }: { node: LayoutNode }) {
       )}
 
       {node.metadata.corporateType && (
-        <InfoSection title="法人種別">
+        <InfoSection title="種別">
           <p className="text-slate-200">{node.metadata.corporateType}</p>
         </InfoSection>
       )}
@@ -92,14 +84,6 @@ function RecipientInfo({ node }: { node: LayoutNode }) {
 function ProjectInfo({ node }: { node: LayoutNode }) {
   return (
     <div className="space-y-4">
-      {/* Header badge */}
-      <div className="bg-yellow-600/20 border border-yellow-500/30 rounded-lg p-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs px-2 py-0.5 bg-yellow-600/50 text-yellow-200 rounded">事業</span>
-          <span className="text-yellow-200 text-sm">政策・施策</span>
-        </div>
-      </div>
-
       {/* Amount */}
       <InfoSection title="予算額">
         <p className="text-2xl font-bold text-white">{formatAmount(node.amount)}</p>
@@ -138,20 +122,6 @@ function ProjectInfo({ node }: { node: LayoutNode }) {
         </InfoSection>
       )}
 
-      {/* Hierarchy path */}
-      {node.metadata.hierarchyPath && node.metadata.hierarchyPath.length > 0 && (
-        <InfoSection title="組織階層">
-          <div className="text-sm text-slate-300">
-            {node.metadata.hierarchyPath.map((path, index) => (
-              <span key={index}>
-                {index > 0 && <span className="text-slate-500 mx-1">→</span>}
-                <span>{path}</span>
-              </span>
-            ))}
-          </div>
-        </InfoSection>
-      )}
-
       {/* Node metadata */}
       <InfoSection title="データ情報">
         <div className="text-sm text-slate-400 space-y-1">
@@ -165,23 +135,9 @@ function ProjectInfo({ node }: { node: LayoutNode }) {
 // 組織（府省・局・課）用の情報表示
 function OrganizationInfo({ node }: { node: LayoutNode }) {
   const typeLabel = getNodeTypeLabel(node.type)
-  const typeColors: Record<string, { bg: string; border: string; text: string }> = {
-    ministry: { bg: 'bg-cyan-600/20', border: 'border-cyan-500/30', text: 'text-cyan-200' },
-    bureau: { bg: 'bg-blue-600/20', border: 'border-blue-500/30', text: 'text-blue-200' },
-    division: { bg: 'bg-green-600/20', border: 'border-green-500/30', text: 'text-green-200' },
-  }
-  const colors = typeColors[node.type] || typeColors.ministry
 
   return (
     <div className="space-y-4">
-      {/* Header badge */}
-      <div className={`${colors.bg} ${colors.border} border rounded-lg p-3`}>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 ${colors.bg} ${colors.text} rounded`}>{typeLabel}</span>
-          <span className={`${colors.text} text-sm`}>行政組織</span>
-        </div>
-      </div>
-
       {/* Amount */}
       <InfoSection title="予算総額">
         <p className="text-2xl font-bold text-white">{formatAmount(node.amount)}</p>
@@ -191,20 +147,6 @@ function OrganizationInfo({ node }: { node: LayoutNode }) {
       {node.ministryId && node.type !== 'ministry' && (
         <InfoSection title="所管府省">
           <p className="text-slate-200">{node.ministryId}</p>
-        </InfoSection>
-      )}
-
-      {/* Hierarchy path */}
-      {node.metadata.hierarchyPath && node.metadata.hierarchyPath.length > 0 && (
-        <InfoSection title="組織階層">
-          <div className="text-sm text-slate-300">
-            {node.metadata.hierarchyPath.map((path, index) => (
-              <span key={index}>
-                {index > 0 && <span className="text-slate-500 mx-1">→</span>}
-                <span>{path}</span>
-              </span>
-            ))}
-          </div>
         </InfoSection>
       )}
 
