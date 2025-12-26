@@ -14,6 +14,19 @@ interface RecipientWithAmount {
 }
 
 export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
+  // 全支出先の総額ランキングを計算（TopN判定用）
+  const globalRecipientRanking = useMemo(() => {
+    const allRecipients = nodes
+      .filter(n => n.type === 'recipient' && !n.metadata.isOther)
+      .sort((a, b) => b.amount - a.amount)
+
+    const rankMap = new Map<string, number>()
+    allRecipients.forEach((recipient, index) => {
+      rankMap.set(recipient.id, index + 1)
+    })
+    return rankMap
+  }, [nodes])
+
   // このノードから到達可能な全ての支出先を検索（再帰的）
   const recipients = useMemo((): RecipientWithAmount[] => {
     // 支出先ノード自体は表示しない
@@ -118,6 +131,7 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
         <div className="space-y-2">
           {recipients.map(({ node: recipientNode, amount }, index) => {
             const percentage = (amount / totalAmount) * 100
+            const globalRank = globalRecipientRanking.get(recipientNode.id)
             return (
               <div
                 key={recipientNode.id}
@@ -125,7 +139,14 @@ export function RecipientsTab({ node, edges, nodes }: RecipientsTabProps) {
               >
                 {/* Rank and name */}
                 <div className="flex items-start gap-2 mb-2">
-                  <span className="text-xs font-medium text-slate-500 mt-0.5">#{index + 1}</span>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span className="text-xs font-medium text-slate-500">#{index + 1}</span>
+                    {globalRank && (
+                      <span className="text-[10px] text-slate-600" title="全体順位">
+                        (Top{globalRank})
+                      </span>
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">
                       {recipientNode.name}
