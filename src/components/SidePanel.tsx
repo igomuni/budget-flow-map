@@ -191,7 +191,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
         <aside className="absolute top-0 left-0 w-96 h-full bg-slate-800 shadow-lg flex flex-col border-r border-slate-700">
           {/* Search results (when query exists) */}
           {query.trim() && (
-            <div ref={listRef} className="overflow-y-auto flex-1 border-b border-slate-700">
+            <div ref={listRef} className="overflow-y-auto flex-1 border-b border-slate-700 pt-16">
               {searchResults.length === 0 ? (
                 <div className="p-4 text-center text-slate-400 text-sm">
                   「{query}」に一致するノードが見つかりません
@@ -239,7 +239,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
           {selectedNode && !query.trim() && (
             <>
               {/* Header with export and close buttons */}
-              <header className="p-4 border-b border-slate-700 flex justify-between items-start">
+              <header className="p-4 pt-16 border-b border-slate-700 flex justify-between items-start">
                 <div className="flex-1 min-w-0">
                   <h2 className="text-lg font-semibold text-white truncate" title={selectedNode.name}>
                     {selectedNode.name}
