@@ -66,15 +66,24 @@ export function DeckGLCanvas({
 
   const [viewState, setViewState] = useState<OrthographicViewState>(initialViewState)
 
+  // Track if viewState change is from external source (to prevent notification loop)
+  const isExternalUpdateRef = useRef(false)
+
   // Sync with external view state (from parent animation)
   useEffect(() => {
     if (externalViewState) {
+      isExternalUpdateRef.current = true
       setViewState(externalViewState)
     }
   }, [externalViewState])
 
-  // Notify parent of view state changes
+  // Notify parent of view state changes (only for user interactions, not external updates)
   useEffect(() => {
+    if (isExternalUpdateRef.current) {
+      // Skip notification for external updates
+      isExternalUpdateRef.current = false
+      return
+    }
     onViewStateChange?.(viewState)
   }, [viewState, onViewStateChange])
 
