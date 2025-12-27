@@ -50,8 +50,6 @@ export function BudgetFlowMap() {
 
   // Animate to target position with easing (GoogleMap風)
   const animateTo = useCallback((targetX: number, targetY: number, targetZoom: number, duration: number = 500) => {
-    console.log('[BudgetFlowMap] animateTo called:', { targetX, targetY, targetZoom, duration })
-
     // Cancel any existing animation
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current)
@@ -64,8 +62,6 @@ export function BudgetFlowMap() {
     const startY = currentViewState?.target?.[1] ?? 0
     const startZoom = typeof currentViewState?.zoom === 'number' ? currentViewState.zoom : -4
 
-    console.log('[BudgetFlowMap] Animation start:', { startX, startY, startZoom })
-
     // Easing function (ease-out cubic)
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
 
@@ -77,8 +73,6 @@ export function BudgetFlowMap() {
       const newX = startX + (targetX - startX) * easedProgress
       const newY = startY + (targetY - startY) * easedProgress
       const newZoom = startZoom + (targetZoom - startZoom) * easedProgress
-
-      console.log('[BudgetFlowMap] Animation frame:', { progress: progress.toFixed(3), newZoom })
 
       const newViewState = {
         target: [newX, newY] as [number, number],
@@ -94,7 +88,6 @@ export function BudgetFlowMap() {
         animationRef.current = requestAnimationFrame(animate)
       } else {
         animationRef.current = null
-        console.log('[BudgetFlowMap] Animation complete')
       }
     }
 
