@@ -96,10 +96,15 @@ export function BudgetFlowMap() {
   }, [])
 
   const handleMinimapNavigate = useCallback((x: number, y: number) => {
-    // Animate to minimap click position
+    // Immediately set view position (no animation for drag responsiveness)
     const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
-    animateTo(x, y, currentZoom, 300)
-  }, [viewState, animateTo])
+    setViewState({
+      target: [x, y],
+      zoom: currentZoom,
+      minZoom: -13,
+      maxZoom: 6,
+    })
+  }, [viewState])
 
   // Handle zoom change from controls
   const handleZoomChange = useCallback((newZoom: number) => {

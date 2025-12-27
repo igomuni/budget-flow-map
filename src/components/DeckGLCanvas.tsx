@@ -1,11 +1,16 @@
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import DeckGL from '@deck.gl/react'
 import { OrthographicView } from '@deck.gl/core'
 import type { PickingInfo, OrthographicViewState } from '@deck.gl/core'
 import { useStore } from '@/store'
 import { createNodeLayers } from '@/layers/createNodeLayers'
 import { createEdgeLayers } from '@/layers/createEdgeLayers'
+import { calculateViewportBounds, cullNodes, cullEdges } from '@/utils/viewportCulling'
 import type { LayoutData, LayoutNode } from '@/types/layout'
+
+// Default viewport size (will be updated on resize)
+const DEFAULT_VIEWPORT_WIDTH = 1920
+const DEFAULT_VIEWPORT_HEIGHT = 1080
 
 interface DeckGLCanvasProps {
   layoutData: LayoutData
@@ -24,6 +29,26 @@ export function DeckGLCanvas({
   const setSelectedNode = useStore((state) => state.setSelectedNode)
   const showTooltip = useStore((state) => state.showTooltip)
   const hideTooltip = useStore((state) => state.hideTooltip)
+
+  // Track container size for viewport culling
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerSize, setContainerSize] = useState({ width: DEFAULT_VIEWPORT_WIDTH, height: DEFAULT_VIEWPORT_HEIGHT })
+
+  // Update container size on resize
+  useEffect(() => {
+    const updateSize = () => {
+      if (containerRef.current) {
+        setContainerSize({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
+        })
+      }
+    }
+
+    updateSize()
+    window.addEventListener('resize', updateSize)
+    return () => window.removeEventListener('resize', updateSize)
+  }, [])
 
   // Initialize view state centered on bounds with appropriate zoom
   const initialViewState = useMemo((): OrthographicViewState => {
@@ -143,24 +168,54 @@ export function DeckGLCanvas({
     return { connectedEdges: edges, connectedNodeIds: nodeIds }
   }, [layoutData.edges, hoveredNodeId, selectedNodeId])
 
-  // Create layers
+  // Debounced viewport state for culling (only update when user stops interacting)
+  const [debouncedViewState, setDebouncedViewState] = useState(viewState)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedViewState(viewState)
+    }, 100) // 100ms debounce
+
+    return () => clearTimeout(timer)
+  }, [viewState])
+
+  // Calculate viewport bounds and cull nodes/edges (using debounced state)
+  const { visibleNodes, visibleEdges } = useMemo(() => {
+    const target = debouncedViewState.target as [number, number]
+    const zoom = debouncedViewState.zoom ?? 0
+
+    const bounds = calculateViewportBounds(
+      target,
+      zoom,
+      containerSize.width,
+      containerSize.height,
+      0.5 // 50% padding for smooth transitions during interaction
+    )
+
+    return {
+      visibleNodes: cullNodes(layoutData.nodes, bounds),
+      visibleEdges: cullEdges(layoutData.edges, bounds),
+    }
+  }, [layoutData.nodes, layoutData.edges, debouncedViewState.target, debouncedViewState.zoom, containerSize])
+
+  // Create layers with culled data
   const layers = useMemo(() => {
     return [
       // Edges behind nodes
       ...createEdgeLayers(
-        layoutData.edges,
+        visibleEdges,
         connectedEdges,
         !!(hoveredNodeId || selectedNodeId)  // Both hover and selection highlight edges
       ),
       // Nodes on top
       ...createNodeLayers(
-        layoutData.nodes,
+        visibleNodes,
         hoveredNodeId,
         selectedNodeId,
         connectedNodeIds
       ),
     ]
-  }, [layoutData, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
+  }, [visibleNodes, visibleEdges, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
 
   // Handle hover
   const handleHover = useCallback(
@@ -208,15 +263,17 @@ export function DeckGLCanvas({
   }, [hoveredNodeId])
 
   return (
-    <DeckGL
-      views={new OrthographicView({ id: 'main', controller: true })}
-      viewState={viewState}
-      onViewStateChange={handleViewStateChange}
-      layers={layers}
-      onHover={handleHover}
-      onClick={handleClick}
-      getCursor={getCursor}
-      style={{ background: '#1a1a2e' }}
-    />
+    <div ref={containerRef} style={{ width: '100%', height: '100%' }}>
+      <DeckGL
+        views={new OrthographicView({ id: 'main', controller: true })}
+        viewState={viewState}
+        onViewStateChange={handleViewStateChange}
+        layers={layers}
+        onHover={handleHover}
+        onClick={handleClick}
+        getCursor={getCursor}
+        style={{ background: '#1a1a2e' }}
+      />
+    </div>
   )
 }
