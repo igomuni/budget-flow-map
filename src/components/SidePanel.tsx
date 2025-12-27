@@ -233,9 +233,21 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
               <h2 className="text-lg font-semibold text-white truncate">
                 {selectedNode.name}
               </h2>
-              <p className="text-sm text-slate-400 mt-1">
-                {getNodeTypeLabel(selectedNode.type)}
-              </p>
+              {/* Hierarchy path or corporate type */}
+              {selectedNode.type === 'recipient' ? (
+                <p className="text-sm text-slate-400 mt-1">
+                  {selectedNode.metadata.corporateType || '分類なし'}
+                </p>
+              ) : selectedNode.metadata.hierarchyPath && selectedNode.metadata.hierarchyPath.length > 0 ? (
+                <p className="text-sm text-slate-400 mt-1">
+                  {selectedNode.metadata.hierarchyPath.map((path, index) => (
+                    <span key={index}>
+                      {index > 0 && <span className="mx-1">→</span>}
+                      <span>{path}</span>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
             </div>
             <button
               onClick={clearSelection}
@@ -329,15 +341,4 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
       )}
     </aside>
   )
-}
-
-function getNodeTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    ministry: '府省',
-    bureau: '局',
-    division: '課',
-    project: '事業',
-    recipient: '支出先',
-  }
-  return labels[type] || type
 }
