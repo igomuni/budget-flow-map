@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { captureScreenshotWithTimestamp } from '@/utils/exportScreenshot'
 
 interface MapControlsProps {
   zoom: number
@@ -102,6 +103,18 @@ export function MapControls({
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3" />
+          </svg>
+        </button>
+
+        {/* Screenshot button */}
+        <button
+          onClick={captureScreenshotWithTimestamp}
+          className="w-10 h-10 bg-white rounded-lg shadow-lg flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          title="スクリーンショット"
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="13" r="4" />
           </svg>
         </button>
 
