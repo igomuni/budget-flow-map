@@ -33,6 +33,9 @@ export function BudgetFlowMap() {
   // Track if initial URL load is complete
   const initialUrlLoadRef = useRef(false)
 
+  // Ref to track current viewState without causing re-renders
+  const viewStateRef = useRef<OrthographicViewState | null>(null)
+
   // Cleanup animation on unmount
   useEffect(() => {
     return () => {
@@ -53,9 +56,11 @@ export function BudgetFlowMap() {
     }
 
     const startTime = performance.now()
-    const startX = viewState?.target?.[0] ?? 0
-    const startY = viewState?.target?.[1] ?? 0
-    const startZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+    // Use ref to get current viewState without dependency
+    const currentViewState = viewStateRef.current
+    const startX = currentViewState?.target?.[0] ?? 0
+    const startY = currentViewState?.target?.[1] ?? 0
+    const startZoom = typeof currentViewState?.zoom === 'number' ? currentViewState.zoom : -4
 
     // Easing function (ease-out cubic)
     const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
@@ -69,12 +74,15 @@ export function BudgetFlowMap() {
       const newY = startY + (targetY - startY) * easedProgress
       const newZoom = startZoom + (targetZoom - startZoom) * easedProgress
 
-      setViewState({
-        target: [newX, newY],
+      const newViewState = {
+        target: [newX, newY] as [number, number],
         zoom: newZoom,
         minZoom: -13,
         maxZoom: 6,
-      })
+      }
+
+      setViewState(newViewState)
+      viewStateRef.current = newViewState
 
       if (progress < 1) {
         animationRef.current = requestAnimationFrame(animate)
@@ -84,7 +92,7 @@ export function BudgetFlowMap() {
     }
 
     animationRef.current = requestAnimationFrame(animate)
-  }, [viewState])
+  }, [])
 
   // Initial load: select node from URL
   useEffect(() => {
@@ -117,32 +125,35 @@ export function BudgetFlowMap() {
     setSelectedNode(node.id, node)
 
     // Animate to node position (GoogleMap風スムーズアニメーション)
-    const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+    const currentZoom = typeof viewStateRef.current?.zoom === 'number' ? viewStateRef.current.zoom : -4
     const targetZoom = Math.max(currentZoom, -2) // Zoom in if too far out
     animateTo(node.x, node.y, targetZoom, 600)
-  }, [viewState, setSelectedNode, animateTo])
+  }, [setSelectedNode, animateTo])
 
   const handleViewStateChange = useCallback((vs: OrthographicViewState) => {
     setViewState(vs)
+    viewStateRef.current = vs
   }, [])
 
   const handleMinimapNavigate = useCallback((x: number, y: number) => {
     // Immediately set view position (no animation for drag responsiveness)
-    const currentZoom = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
-    setViewState({
-      target: [x, y],
+    const currentZoom = typeof viewStateRef.current?.zoom === 'number' ? viewStateRef.current.zoom : -4
+    const newViewState = {
+      target: [x, y] as [number, number],
       zoom: currentZoom,
       minZoom: -13,
       maxZoom: 6,
-    })
-  }, [viewState])
+    }
+    setViewState(newViewState)
+    viewStateRef.current = newViewState
+  }, [])
 
   // Handle zoom change from controls
   const handleZoomChange = useCallback((newZoom: number) => {
-    const targetX = viewState?.target?.[0] ?? 0
-    const targetY = viewState?.target?.[1] ?? 0
+    const targetX = viewStateRef.current?.target?.[0] ?? 0
+    const targetY = viewStateRef.current?.target?.[1] ?? 0
     animateTo(targetX, targetY, newZoom, 200)
-  }, [viewState, animateTo])
+  }, [animateTo])
 
   // Add spacing to layout data (px単位で加算)
   const scaledData = useMemo((): LayoutData | null => {
