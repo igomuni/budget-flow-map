@@ -287,7 +287,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
                 <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
               )
             )}
-            {activeTab === 'flow' && <FlowContextTab node={selectedNode} />}
+            {activeTab === 'flow' && <FlowContextTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />}
           </div>
         </>
       )}
