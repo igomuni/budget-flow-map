@@ -9,6 +9,7 @@ import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
 import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
+import { getNodeIdFromUrl, updateUrlWithNodeId } from '@/utils/urlState'
 import type { LayoutData, LayoutNode } from '@/types/layout'
 
 export function BudgetFlowMap() {
@@ -22,10 +23,15 @@ export function BudgetFlowMap() {
   const [threshold, setThreshold] = useState(1e12) // 1兆円 = 1,000,000,000,000円
 
   // Zustand store for selection state
+  const selectedNodeId = useStore((state) => state.selectedNodeId)
+  const selectedNodeData = useStore((state) => state.selectedNodeData)
   const setSelectedNode = useStore((state) => state.setSelectedNode)
 
   // Animation ref for smooth transitions
   const animationRef = useRef<number | null>(null)
+
+  // Track if initial URL load is complete
+  const initialUrlLoadRef = useRef(false)
 
   // Cleanup animation on unmount
   useEffect(() => {
@@ -79,6 +85,31 @@ export function BudgetFlowMap() {
 
     animationRef.current = requestAnimationFrame(animate)
   }, [viewState])
+
+  // Initial load: select node from URL
+  useEffect(() => {
+    if (!data || initialUrlLoadRef.current) return
+
+    const nodeId = getNodeIdFromUrl()
+    if (nodeId) {
+      const node = data.nodes.find(n => n.id === nodeId)
+      if (node) {
+        setSelectedNode(nodeId, node)
+        // Navigate to node
+        const targetZoom = -2
+        animateTo(node.x, node.y, targetZoom, 800)
+      }
+    }
+
+    initialUrlLoadRef.current = true
+  }, [data, setSelectedNode, animateTo])
+
+  // Update URL when node selection changes (include node name for readability)
+  useEffect(() => {
+    if (initialUrlLoadRef.current) {
+      updateUrlWithNodeId(selectedNodeId, selectedNodeData?.name)
+    }
+  }, [selectedNodeId, selectedNodeData])
 
   // Handle search result selection - navigate to node and select it
   const handleSearchSelect = useCallback((node: LayoutNode) => {
