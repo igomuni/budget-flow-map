@@ -342,14 +342,3 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
     </aside>
   )
 }
-
-function getNodeTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    ministry: '府省',
-    bureau: '局',
-    division: '課',
-    project: '事業',
-    recipient: '支出先',
-  }
-  return labels[type] || type
-}
