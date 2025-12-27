@@ -4,6 +4,7 @@ import { BasicInfoTab } from './InfoPanel/BasicInfoTab'
 import { RecipientsTab } from './InfoPanel/RecipientsTab'
 import { ProjectsTab } from './InfoPanel/ProjectsTab'
 import { FlowContextTab } from './InfoPanel/FlowContextTab'
+import { exportNodeToCsv } from '@/utils/exportCsv'
 import type { LayoutNode, LayoutEdge } from '@/types/layout'
 import type { InfoPanelTab } from '@/types/store'
 
@@ -227,7 +228,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
       {/* Node details (when selected and not searching) */}
       {selectedNode && !query.trim() && (
         <>
-          {/* Header with close button */}
+          {/* Header with export and close buttons */}
           <header className="p-4 border-b border-slate-700 flex justify-between items-start">
             <div className="flex-1 min-w-0">
               <h2 className="text-lg font-semibold text-white truncate">
@@ -249,15 +250,27 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
                 </p>
               ) : null}
             </div>
-            <button
-              onClick={clearSelection}
-              className="ml-2 p-1 text-slate-400 hover:text-white transition-colors"
-              aria-label="閉じる"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => exportNodeToCsv(selectedNode, rawEdges, rawNodes)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                aria-label="CSVエクスポート"
+                title="CSVエクスポート"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+              </button>
+              <button
+                onClick={clearSelection}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                aria-label="閉じる"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </header>
 
           {/* Tab navigation */}
