@@ -11,19 +11,31 @@ export function getNodeIdFromUrl(): string | null {
 }
 
 /**
- * Update URL with selected node ID without page reload
+ * Update URL with selected node ID and name (Google Maps style) without page reload
+ * Example: ?node=<node-id>/<url-encoded-node-name>
  */
-export function updateUrlWithNodeId(nodeId: string | null): void {
+export function updateUrlWithNodeId(nodeId: string | null, nodeName?: string): void {
   const url = new URL(window.location.href)
 
   if (nodeId) {
-    url.searchParams.set('node', nodeId)
+    // Include node name for readability (Google Maps style)
+    const nodeParam = nodeName ? `${nodeId}/${encodeURIComponent(nodeName)}` : nodeId
+    url.searchParams.set('node', nodeParam)
   } else {
     url.searchParams.delete('node')
   }
 
   // Update URL without reloading the page
   window.history.replaceState({}, '', url.toString())
+}
+
+/**
+ * Parse node ID from URL parameter (handles both "id" and "id/name" formats)
+ */
+export function parseNodeIdFromParam(param: string): string {
+  // If param contains '/', extract only the ID part
+  const slashIndex = param.indexOf('/')
+  return slashIndex > -1 ? param.substring(0, slashIndex) : param
 }
 
 /**

@@ -9,7 +9,7 @@ import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
 import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
-import { getNodeIdFromUrl, updateUrlWithNodeId } from '@/utils/urlState'
+import { getNodeIdFromUrl, updateUrlWithNodeId, parseNodeIdFromParam } from '@/utils/urlState'
 import type { LayoutData, LayoutNode } from '@/types/layout'
 
 export function BudgetFlowMap() {
@@ -24,6 +24,7 @@ export function BudgetFlowMap() {
 
   // Zustand store for selection state
   const selectedNodeId = useStore((state) => state.selectedNodeId)
+  const selectedNodeData = useStore((state) => state.selectedNodeData)
   const setSelectedNode = useStore((state) => state.setSelectedNode)
 
   // Animation ref for smooth transitions
@@ -89,8 +90,10 @@ export function BudgetFlowMap() {
   useEffect(() => {
     if (!data || initialUrlLoadRef.current) return
 
-    const nodeId = getNodeIdFromUrl()
-    if (nodeId) {
+    const nodeParam = getNodeIdFromUrl()
+    if (nodeParam) {
+      // Parse node ID from param (handles both "id" and "id/name" formats)
+      const nodeId = parseNodeIdFromParam(nodeParam)
       const node = data.nodes.find(n => n.id === nodeId)
       if (node) {
         setSelectedNode(nodeId, node)
@@ -103,12 +106,12 @@ export function BudgetFlowMap() {
     initialUrlLoadRef.current = true
   }, [data, setSelectedNode, animateTo])
 
-  // Update URL when node selection changes
+  // Update URL when node selection changes (include node name for readability)
   useEffect(() => {
     if (initialUrlLoadRef.current) {
-      updateUrlWithNodeId(selectedNodeId)
+      updateUrlWithNodeId(selectedNodeId, selectedNodeData?.name)
     }
-  }, [selectedNodeId])
+  }, [selectedNodeId, selectedNodeData])
 
   // Handle search result selection - navigate to node and select it
   const handleSearchSelect = useCallback((node: LayoutNode) => {
