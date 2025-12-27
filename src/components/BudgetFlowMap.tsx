@@ -9,7 +9,7 @@ import { MapControls } from './MapControls'
 import { TopNSettings } from './TopNSettings'
 import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
-import { getNodeIdFromUrl, updateUrlWithNodeId, parseNodeIdFromParam } from '@/utils/urlState'
+import { getNodeIdFromUrl, updateUrlWithNodeId } from '@/utils/urlState'
 import type { LayoutData, LayoutNode } from '@/types/layout'
 
 export function BudgetFlowMap() {
@@ -86,14 +86,12 @@ export function BudgetFlowMap() {
     animationRef.current = requestAnimationFrame(animate)
   }, [viewState])
 
-  // Initial load: select node from URL parameter
+  // Initial load: select node from URL
   useEffect(() => {
     if (!data || initialUrlLoadRef.current) return
 
-    const nodeParam = getNodeIdFromUrl()
-    if (nodeParam) {
-      // Parse node ID from param (handles both "id" and "id/name" formats)
-      const nodeId = parseNodeIdFromParam(nodeParam)
+    const nodeId = getNodeIdFromUrl()
+    if (nodeId) {
       const node = data.nodes.find(n => n.id === nodeId)
       if (node) {
         setSelectedNode(nodeId, node)
