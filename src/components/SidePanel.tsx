@@ -25,7 +25,6 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
 
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [searchHistory, setSearchHistory] = useState<LayoutNode[]>([])
   const [showCopySuccess, setShowCopySuccess] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -96,15 +95,10 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [])
 
-  // Handle node selection (search result or history click)
+  // Handle node selection
   const handleNodeSelect = useCallback((node: LayoutNode) => {
     onNodeSelect(node)
     setQuery('')
-    // Add to history (remove duplicates, keep latest at top)
-    setSearchHistory(prev => {
-      const filtered = prev.filter(n => n.id !== node.id)
-      return [node, ...filtered].slice(0, 10) // Keep last 10
-    })
   }, [onNodeSelect])
 
   // Handle keyboard navigation
@@ -160,8 +154,12 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
     ]
   }, [selectedNode?.type])
 
+  const showPanel = query.trim() || selectedNode
+
   return (
-    <aside className="w-96 h-full bg-slate-800 shadow-lg flex flex-col z-10 border-r border-slate-700 shrink-0">
+    <aside className={`h-full bg-slate-800 shadow-lg flex flex-col z-10 border-r border-slate-700 shrink-0 transition-all duration-200 ${
+      showPanel ? 'w-96' : 'w-80'
+    }`}>
       {/* Search bar - always visible */}
       <div className="p-3 border-b border-slate-700">
         <div className="relative">
@@ -242,7 +240,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
           {/* Header with export and close buttons */}
           <header className="p-4 border-b border-slate-700 flex justify-between items-start">
             <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-semibold text-white truncate">
+              <h2 className="text-lg font-semibold text-white truncate" title={selectedNode.name}>
                 {selectedNode.name}
               </h2>
               {/* Hierarchy path or corporate type */}
@@ -251,9 +249,9 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
                   {selectedNode.metadata.corporateType || '分類なし'}
                 </p>
               ) : selectedNode.metadata.hierarchyPath && selectedNode.metadata.hierarchyPath.length > 0 ? (
-                <p className="text-sm text-slate-400 mt-1">
+                <p className="text-sm text-slate-400 mt-1 break-words">
                   {selectedNode.metadata.hierarchyPath.map((path, index) => (
-                    <span key={index}>
+                    <span key={index} className="inline-block">
                       {index > 0 && <span className="mx-1">→</span>}
                       <span>{path}</span>
                     </span>
@@ -331,53 +329,6 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
         </>
       )}
 
-      {/* Search history (when no query and no selection) */}
-      {!query.trim() && !selectedNode && searchHistory.length > 0 && (
-        <div className="flex-1 overflow-auto">
-          <div className="p-3 text-xs text-slate-500 border-b border-slate-700">
-            最近の検索
-          </div>
-          {searchHistory.map((node) => (
-            <button
-              key={node.id}
-              onClick={() => handleNodeSelect(node)}
-              className="w-full px-4 py-3 text-left hover:bg-slate-700 flex flex-col gap-1 border-b border-slate-700/50"
-            >
-              <div className="flex items-center gap-2">
-                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  node.layer === 0 ? 'bg-cyan-600/50 text-cyan-200' :
-                  node.layer === 1 ? 'bg-blue-600/50 text-blue-200' :
-                  node.layer === 2 ? 'bg-green-600/50 text-green-200' :
-                  node.layer === 3 ? 'bg-yellow-600/50 text-yellow-200' :
-                  'bg-red-600/50 text-red-200'
-                }`}>
-                  {getLayerName(node.layer)}
-                </span>
-                <span className="text-white text-sm truncate flex-1">{node.name}</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span>{formatAmount(node.amount)}</span>
-                {node.ministryId && node.layer > 0 && (
-                  <span className="truncate">・{node.ministryId}</span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Empty state (no query, no selection, no history) */}
-      {!query.trim() && !selectedNode && searchHistory.length === 0 && (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center text-slate-500">
-            <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <p className="text-sm">ノードを検索するか、</p>
-            <p className="text-sm">マップ上でクリックして選択</p>
-          </div>
-        </div>
-      )}
     </aside>
   )
 }
