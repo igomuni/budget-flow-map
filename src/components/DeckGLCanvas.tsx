@@ -143,6 +143,10 @@ export function DeckGLCanvas({
     return { connectedEdges: edges, connectedNodeIds: nodeIds }
   }, [layoutData.edges, hoveredNodeId, selectedNodeId])
 
+  // Get current zoom level for label visibility
+  // OrthographicViewState zoom can be number or [number, number] - we only need the first value
+  const currentZoom = Array.isArray(viewState.zoom) ? viewState.zoom[0] : (viewState.zoom ?? 0)
+
   // Create layers
   const layers = useMemo(() => {
     return [
@@ -152,15 +156,16 @@ export function DeckGLCanvas({
         connectedEdges,
         !!(hoveredNodeId || selectedNodeId)  // Both hover and selection highlight edges
       ),
-      // Nodes on top
+      // Nodes on top with zoom-adaptive labels
       ...createNodeLayers(
         layoutData.nodes,
         hoveredNodeId,
         selectedNodeId,
-        connectedNodeIds
+        connectedNodeIds,
+        currentZoom
       ),
     ]
-  }, [layoutData, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
+  }, [layoutData, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds, currentZoom])
 
   // Handle hover
   const handleHover = useCallback(

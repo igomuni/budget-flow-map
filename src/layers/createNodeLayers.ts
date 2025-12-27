@@ -1,6 +1,7 @@
-import { PolygonLayer } from '@deck.gl/layers'
-import type { LayoutNode } from '@/types/layout'
+import { PolygonLayer, TextLayer } from '@deck.gl/layers'
+import type { LayoutNode, LayerIndex } from '@/types/layout'
 import { getNodeColor } from '@/utils/colorScheme'
+import { getVisibleLabels, getLabelSize, getMaxLabelsPerLayer } from '@/utils/zoomThresholds'
 
 /**
  * Create PolygonLayers for nodes as vertical bars (Sankey-style)
@@ -9,8 +10,9 @@ export function createNodeLayers(
   nodes: LayoutNode[],
   hoveredNodeId: string | null,
   selectedNodeId: string | null,
-  connectedNodeIds: Set<string>
-): PolygonLayer<LayoutNode>[] {
+  connectedNodeIds: Set<string>,
+  zoom: number = 0
+): (PolygonLayer<LayoutNode> | TextLayer<LayoutNode>)[] {
   const hasActiveSelection = !!(hoveredNodeId || selectedNodeId)
   // Group nodes by layer
   const nodesByLayer = new Map<number, LayoutNode[]>()
@@ -22,7 +24,7 @@ export function createNodeLayers(
   }
 
   // Create a layer for each group
-  const layers: PolygonLayer<LayoutNode>[] = []
+  const layers: (PolygonLayer<LayoutNode> | TextLayer<LayoutNode>)[] = []
 
   for (const [layerIndex, layerNodes] of nodesByLayer) {
     layers.push(
@@ -86,6 +88,70 @@ export function createNodeLayers(
           getFillColor: [hoveredNodeId, selectedNodeId, connectedNodeIds],
           getLineColor: [selectedNodeId],
           getLineWidth: [selectedNodeId],
+        },
+      })
+    )
+  }
+
+  // Add text labels based on zoom level
+  const visibleLabelNodes = getVisibleLabels(nodes, zoom)
+
+  // Group visible labels by layer and limit per layer
+  const labelsByLayer = new Map<number, LayoutNode[]>()
+  for (const node of visibleLabelNodes) {
+    const layerNodes = labelsByLayer.get(node.layer) || []
+    layerNodes.push(node)
+    labelsByLayer.set(node.layer, layerNodes)
+  }
+
+  // Create text layer for each layer group
+  for (const [layerIndex, layerNodes] of labelsByLayer) {
+    const maxLabels = getMaxLabelsPerLayer(layerIndex as LayerIndex, zoom)
+    // Sort by amount (descending) and take top N
+    const topNodes = [...layerNodes]
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, maxLabels)
+
+    if (topNodes.length === 0) continue
+
+    const fontSize = getLabelSize(layerIndex as LayerIndex, zoom)
+
+    // Calculate font size in world coordinates
+    // At zoom 0, 1 world unit = 1 pixel. At zoom N, scale = 2^N
+    const scale = Math.pow(2, zoom)
+    const worldFontSize = fontSize / scale
+
+    layers.push(
+      new TextLayer<LayoutNode>({
+        id: `labels-layer-${layerIndex}`,
+        data: topNodes,
+        pickable: false,
+
+        getText: (d) => d.name,
+        getPosition: (d) => [d.x + d.width / 2 + 10 / scale, d.y], // Right of node with offset
+        getSize: worldFontSize,
+        getColor: (d) => {
+          // Reduce opacity for non-connected nodes when there's an active selection
+          if (hasActiveSelection && !connectedNodeIds.has(d.id)) {
+            return [255, 255, 255, 51] // 20% opacity
+          }
+          return [255, 255, 255, 220] // Slightly transparent white
+        },
+        getAngle: 0,
+        getTextAnchor: 'start',
+        getAlignmentBaseline: 'center',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        fontWeight: 'normal',
+
+        // Use world coordinates (common units)
+        sizeUnits: 'common',
+        sizeScale: 1,
+
+        updateTriggers: {
+          getData: [zoom],
+          getSize: [zoom],
+          getPosition: [zoom],
+          getColor: [hoveredNodeId, selectedNodeId, connectedNodeIds],
         },
       })
     )

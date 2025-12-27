@@ -4,17 +4,21 @@ import type { LayoutNode, LayerIndex } from '@/types/layout'
  * Zoom threshold for each layer to show labels
  * Uses log2 scale (zoom level in deck.gl OrthographicView)
  *
+ * Initial zoom is -4 (very zoomed out)
+ * Zoom -4 = 1/16x (initial view)
+ * Zoom -3 = 1/8x
+ * Zoom -2 = 1/4x
+ * Zoom -1 = 1/2x
  * Zoom 0 = 1x
  * Zoom 1 = 2x
  * Zoom 2 = 4x
- * Zoom 2.32 = 5x
  */
 const LABEL_VISIBILITY_THRESHOLDS: Record<LayerIndex, number> = {
-  0: -1,      // Ministry: always visible (even at 0.5x zoom)
-  1: 0.5,     // Bureau: visible at ~1.4x zoom
-  2: 1.5,     // Division: visible at ~2.8x zoom
-  3: 2.2,     // Project: visible at ~4.6x zoom
-  4: 2.5,     // Recipient: visible at ~5.6x zoom
+  0: -3,      // Ministry: visible at ~1/8x zoom (early)
+  1: -2,      // Bureau: visible at ~1/4x zoom
+  2: -1,      // Division: visible at ~1/2x zoom
+  3: 0,       // Project: visible at 1x zoom
+  4: 1,       // Recipient: visible at 2x zoom
 }
 
 /**
@@ -34,18 +38,19 @@ export function getVisibleLabels(nodes: LayoutNode[], zoom: number): LayoutNode[
 
 /**
  * Get label font size based on layer and zoom
+ * Returns size in pixels (will be converted to world units by caller)
  */
 export function getLabelSize(layer: LayerIndex, zoom: number): number {
   const baseSizes: Record<LayerIndex, number> = {
-    0: 16,   // Ministry: largest
-    1: 14,   // Bureau
-    2: 12,   // Division
+    0: 14,   // Ministry: largest
+    1: 12,   // Bureau
+    2: 11,   // Division
     3: 10,   // Project
     4: 9,    // Recipient: smallest
   }
 
-  // Slightly increase size as zoom increases
-  const zoomBonus = Math.max(0, zoom - LABEL_VISIBILITY_THRESHOLDS[layer]) * 2
+  // Slightly increase size as zoom increases (capped)
+  const zoomBonus = Math.min(4, Math.max(0, zoom - LABEL_VISIBILITY_THRESHOLDS[layer]) * 1.5)
 
   return baseSizes[layer] + zoomBonus
 }
