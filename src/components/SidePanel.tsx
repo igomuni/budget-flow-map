@@ -161,15 +161,15 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
 
   return (
     <div className="relative h-full z-10">
-      {/* Expand button - visible when collapsed */}
+      {/* Expand button - visible when collapsed, edge style */}
       {isCollapsed && (
         <button
           onClick={() => setPanelCollapsed(false)}
-          className="absolute top-3 left-3 z-30 p-2 bg-slate-800 text-white rounded-lg shadow-lg border border-slate-700 hover:bg-slate-700 transition-colors"
+          className="absolute top-1/2 -translate-y-1/2 left-0 z-30 w-1.5 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
           aria-label="サイドパネルを展開する"
           title="サイドパネルを展開する"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
           </svg>
         </button>
@@ -208,14 +208,14 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
       {/* Panel - only show when searching or node selected */}
       {showPanel && (
         <aside className="absolute top-0 left-0 w-96 h-full bg-slate-800 shadow-lg flex flex-col border-r border-slate-700">
-          {/* Toggle button - on the right edge of panel, vertically centered */}
+          {/* Collapse button - on the right edge of panel, vertically centered, edge style */}
           <button
             onClick={() => setPanelCollapsed(true)}
-            className="absolute top-1/2 -translate-y-1/2 -right-4 z-30 p-2 bg-slate-800 text-white rounded-r-lg shadow-lg border border-slate-700 hover:bg-slate-700 transition-colors"
+            className="absolute top-1/2 -translate-y-1/2 right-0 z-30 w-1.5 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
             aria-label="サイドパネルを折りたたむ"
             title="サイドパネルを折りたたむ"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
