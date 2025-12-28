@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { TopNSettingsDialog } from './TopNSettingsDialog'
 
 interface MapControlsProps {
   zoom: number
@@ -40,6 +41,7 @@ export function MapControls({
   onThresholdChange,
 }: MapControlsProps) {
   const [showSettings, setShowSettings] = useState(false)
+  const [showTopNDialog, setShowTopNDialog] = useState(false)
 
   const handleZoomIn = useCallback(() => {
     onZoomChange(Math.min(zoom + 0.5, maxZoom))
@@ -76,6 +78,16 @@ export function MapControls({
     onNodeSpacingYChange(0)
     onNodeWidthChange(50)
   }, [onNodeSpacingXChange, onNodeSpacingYChange, onNodeWidthChange])
+
+  // Handle TopN settings apply
+  const handleTopNApply = useCallback(
+    (settings: { topProjects: number; topRecipients: number; threshold: number }) => {
+      onTopProjectsChange(settings.topProjects)
+      onTopRecipientsChange(settings.topRecipients)
+      onThresholdChange(settings.threshold)
+    },
+    [onTopProjectsChange, onTopRecipientsChange, onThresholdChange]
+  )
 
   // Convert zoom to percentage for display (zoom=0 → 100%)
   const zoomPercentage = Math.round(Math.pow(2, zoom) * 100)
@@ -214,51 +226,16 @@ export function MapControls({
 
             <hr className="border-gray-200" />
 
-            {/* TopN Settings */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                事業表示数: Top {topProjects}
-              </label>
-              <input
-                type="range"
-                min={100}
-                max={2000}
-                step={100}
-                value={topProjects}
-                onChange={(e) => onTopProjectsChange(parseInt(e.target.value))}
-                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                支出先表示数: Top {topRecipients}
-              </label>
-              <input
-                type="range"
-                min={100}
-                max={3000}
-                step={100}
-                value={topRecipients}
-                onChange={(e) => onTopRecipientsChange(parseInt(e.target.value))}
-                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                最小高さ閾値: {threshold >= 1e12 ? `${(threshold / 1e12).toFixed(1)}兆円` : `${(threshold / 1e8).toFixed(0)}億円`}
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={5e12}
-                step={1e11}
-                value={threshold}
-                onChange={(e) => onThresholdChange(parseInt(e.target.value))}
-                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-              />
-            </div>
+            {/* TopN Settings Button */}
+            <button
+              onClick={() => setShowTopNDialog(true)}
+              className="w-full py-2 px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm rounded-lg transition-colors flex items-center justify-between"
+            >
+              <span>表示フィルター設定</span>
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
 
             {/* Reset button */}
             <button
@@ -270,6 +247,16 @@ export function MapControls({
           </div>
         </div>
       )}
+
+      {/* TopN Settings Dialog */}
+      <TopNSettingsDialog
+        isOpen={showTopNDialog}
+        onClose={() => setShowTopNDialog(false)}
+        topProjects={topProjects}
+        topRecipients={topRecipients}
+        threshold={threshold}
+        onApply={handleTopNApply}
+      />
     </>
   )
 }
