@@ -165,7 +165,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
       {isCollapsed && (
         <button
           onClick={() => setPanelCollapsed(false)}
-          className="absolute top-1/2 -translate-y-1/2 left-0 z-30 w-1.5 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
+          className="absolute top-1/2 -translate-y-1/2 left-0 z-30 w-6 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
           aria-label="サイドパネルを展開する"
           title="サイドパネルを展開する"
         >
@@ -208,10 +208,10 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
       {/* Panel - only show when searching or node selected */}
       {showPanel && (
         <aside className="absolute top-0 left-0 w-96 h-full bg-slate-800 shadow-lg flex flex-col border-r border-slate-700">
-          {/* Collapse button - on the right edge of panel, vertically centered, edge style */}
+          {/* Collapse button - outside the right edge of panel, vertically centered, edge style */}
           <button
             onClick={() => setPanelCollapsed(true)}
-            className="absolute top-1/2 -translate-y-1/2 right-0 z-30 w-1.5 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
+            className="absolute top-1/2 -translate-y-1/2 -right-6 z-30 w-6 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
             aria-label="サイドパネルを折りたたむ"
             title="サイドパネルを折りたたむ"
           >
