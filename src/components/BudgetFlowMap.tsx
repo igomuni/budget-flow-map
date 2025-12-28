@@ -94,24 +94,6 @@ export function BudgetFlowMap() {
     animationRef.current = requestAnimationFrame(animate)
   }, [])
 
-  // Initial load: select node from URL
-  useEffect(() => {
-    if (!data || initialUrlLoadRef.current) return
-
-    const nodeId = getNodeIdFromUrl()
-    if (nodeId) {
-      const node = data.nodes.find(n => n.id === nodeId)
-      if (node) {
-        setSelectedNode(nodeId, node)
-        // Navigate to node
-        const targetZoom = -2
-        animateTo(node.x, node.y, targetZoom, 800)
-      }
-    }
-
-    initialUrlLoadRef.current = true
-  }, [data, setSelectedNode, animateTo])
-
   // Update URL when node selection changes (include node name for readability)
   useEffect(() => {
     if (initialUrlLoadRef.current) {
@@ -256,14 +238,30 @@ export function BudgetFlowMap() {
     const zoomY = Math.log2(viewportHeight / (boundsHeight * padding))
     const fitZoom = Math.min(zoomX, zoomY)
 
-    // Reset view state to center with calculated zoom
-    setViewState({
-      target: [centerX, centerY],
-      zoom: fitZoom,
-      minZoom: -13,
-      maxZoom: 6,
-    })
-  }, [scaledData])
+    // Animate to fit position
+    animateTo(centerX, centerY, fitZoom, 800)
+  }, [scaledData, animateTo])
+
+  // Initial load: select node from URL or fit to screen
+  useEffect(() => {
+    if (!scaledData || initialUrlLoadRef.current) return
+
+    const nodeId = getNodeIdFromUrl()
+    if (nodeId) {
+      const node = scaledData.nodes.find(n => n.id === nodeId)
+      if (node) {
+        setSelectedNode(nodeId, node)
+        // Navigate to node
+        const targetZoom = -2
+        animateTo(node.x, node.y, targetZoom, 800)
+      }
+    } else {
+      // No node selected, fit to screen with animation
+      handleFitToScreen()
+    }
+
+    initialUrlLoadRef.current = true
+  }, [scaledData, setSelectedNode, animateTo, handleFitToScreen])
 
   if (loading) {
     return (

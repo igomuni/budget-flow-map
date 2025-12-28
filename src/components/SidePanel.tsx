@@ -22,10 +22,11 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
   const activeTab = useStore((state) => state.activeTab)
   const setActiveTab = useStore((state) => state.setActiveTab)
   const clearSelection = useStore((state) => state.clearSelection)
+  const isCollapsed = useStore((state) => state.isPanelCollapsed)
+  const setPanelCollapsed = useStore((state) => state.setPanelCollapsed)
 
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [searchHistory, setSearchHistory] = useState<LayoutNode[]>([])
   const [showCopySuccess, setShowCopySuccess] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -96,15 +97,11 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [])
 
-  // Handle node selection (search result or history click)
+  // Handle node selection
   const handleNodeSelect = useCallback((node: LayoutNode) => {
     onNodeSelect(node)
     setQuery('')
-    // Add to history (remove duplicates, keep latest at top)
-    setSearchHistory(prev => {
-      const filtered = prev.filter(n => n.id !== node.id)
-      return [node, ...filtered].slice(0, 10) // Keep last 10
-    })
+    // Auto-expand is now handled in Zustand store's setSelectedNode
   }, [onNodeSelect])
 
   // Handle keyboard navigation
@@ -160,10 +157,27 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
     ]
   }, [selectedNode?.type])
 
+  const showPanel = !isCollapsed && (query.trim() || selectedNode)
+
   return (
-    <aside className="w-96 h-full bg-slate-800 shadow-lg flex flex-col z-10 border-r border-slate-700 shrink-0">
-      {/* Search bar - always visible */}
-      <div className="p-3 border-b border-slate-700">
+    <div className="relative h-full z-10">
+      {/* Expand button - visible when collapsed, edge style */}
+      {isCollapsed && (
+        <button
+          onClick={() => setPanelCollapsed(false)}
+          className="absolute top-1/2 -translate-y-1/2 left-0 z-30 w-6 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
+          aria-label="サイドパネルを展開する"
+          title="サイドパネルを展開する"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+
+      {/* Search box - visible when expanded */}
+      {!isCollapsed && (
+        <div className="absolute top-3 left-3 z-20">
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -175,7 +189,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="ノード名で検索... (⌘K)"
-            className="w-full bg-slate-700 text-white pl-10 pr-10 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-80 bg-slate-800 text-white pl-10 pr-10 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-lg border border-slate-700"
           />
           {query && (
             <button
@@ -188,196 +202,165 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
             </button>
           )}
         </div>
-      </div>
+        </div>
+      )}
 
-      {/* Search results (when query exists) */}
-      {query.trim() && (
-        <div ref={listRef} className="overflow-y-auto flex-1 border-b border-slate-700">
-          {searchResults.length === 0 ? (
-            <div className="p-4 text-center text-slate-400 text-sm">
-              「{query}」に一致するノードが見つかりません
+      {/* Panel - only show when searching or node selected */}
+      {showPanel && (
+        <aside className="absolute top-0 left-0 w-96 h-full bg-slate-800 shadow-lg flex flex-col border-r border-slate-700">
+          {/* Collapse button - outside the right edge of panel, vertically centered, edge style */}
+          <button
+            onClick={() => setPanelCollapsed(true)}
+            className="absolute top-1/2 -translate-y-1/2 -right-6 z-30 w-6 h-12 bg-slate-800 text-white rounded-r-md shadow-lg border-r border-t border-b border-slate-700 hover:bg-slate-700 transition-colors flex items-center justify-center"
+            aria-label="サイドパネルを折りたたむ"
+            title="サイドパネルを折りたたむ"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          {/* Search results (when query exists) */}
+          {query.trim() && (
+            <div ref={listRef} className="overflow-y-auto flex-1 border-b border-slate-700 pt-16">
+              {searchResults.length === 0 ? (
+                <div className="p-4 text-center text-slate-400 text-sm">
+                  「{query}」に一致するノードが見つかりません
+                </div>
+              ) : (
+                <>
+                  {searchResults.map((node, index) => (
+                    <button
+                      key={node.id}
+                      onClick={() => handleNodeSelect(node)}
+                      className={`w-full px-4 py-3 text-left hover:bg-slate-700 flex flex-col gap-1 border-b border-slate-700/50 ${
+                        index === selectedIndex ? 'bg-slate-700' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          node.layer === 0 ? 'bg-cyan-600/50 text-cyan-200' :
+                          node.layer === 1 ? 'bg-blue-600/50 text-blue-200' :
+                          node.layer === 2 ? 'bg-green-600/50 text-green-200' :
+                          node.layer === 3 ? 'bg-yellow-600/50 text-yellow-200' :
+                          'bg-red-600/50 text-red-200'
+                        }`}>
+                          {getLayerName(node.layer)}
+                        </span>
+                        <span className="text-white text-sm truncate flex-1">{node.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span>{formatAmount(node.amount)}</span>
+                        {node.ministryId && node.layer > 0 && (
+                          <span className="truncate">・{node.ministryId}</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                  <div className="p-2 text-xs text-slate-500 flex items-center justify-between">
+                    <span>↑↓ 選択 Enter 決定 Esc 閉じる</span>
+                    <span>{searchResults.length}件</span>
+                  </div>
+                </>
+              )}
             </div>
-          ) : (
+          )}
+
+          {/* Node details (when selected and not searching) */}
+          {selectedNode && !query.trim() && (
             <>
-              {searchResults.map((node, index) => (
-                <button
-                  key={node.id}
-                  onClick={() => handleNodeSelect(node)}
-                  className={`w-full px-4 py-3 text-left hover:bg-slate-700 flex flex-col gap-1 border-b border-slate-700/50 ${
-                    index === selectedIndex ? 'bg-slate-700' : ''
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      node.layer === 0 ? 'bg-cyan-600/50 text-cyan-200' :
-                      node.layer === 1 ? 'bg-blue-600/50 text-blue-200' :
-                      node.layer === 2 ? 'bg-green-600/50 text-green-200' :
-                      node.layer === 3 ? 'bg-yellow-600/50 text-yellow-200' :
-                      'bg-red-600/50 text-red-200'
-                    }`}>
-                      {getLayerName(node.layer)}
-                    </span>
-                    <span className="text-white text-sm truncate flex-1">{node.name}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <span>{formatAmount(node.amount)}</span>
-                    {node.ministryId && node.layer > 0 && (
-                      <span className="truncate">・{node.ministryId}</span>
+              {/* Header with export and close buttons */}
+              <header className="p-4 pt-16 border-b border-slate-700 flex justify-between items-start">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg font-semibold text-white truncate" title={selectedNode.name}>
+                    {selectedNode.name}
+                  </h2>
+                  {/* Hierarchy path or corporate type */}
+                  {selectedNode.type === 'recipient' ? (
+                    <p className="text-sm text-slate-400 mt-1">
+                      {selectedNode.metadata.corporateType || '分類なし'}
+                    </p>
+                  ) : selectedNode.metadata.hierarchyPath && selectedNode.metadata.hierarchyPath.length > 0 ? (
+                    <p className="text-sm text-slate-400 mt-1 break-words">
+                      {selectedNode.metadata.hierarchyPath.map((path, index) => (
+                        <span key={index} className="inline-block">
+                          {index > 0 && <span className="mx-1">→</span>}
+                          <span>{path}</span>
+                        </span>
+                      ))}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleShare}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors relative"
+                    aria-label="リンクをコピー"
+                    title="リンクをコピー"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                    </svg>
+                    {showCopySuccess && (
+                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded whitespace-nowrap z-50">
+                        コピーしました
+                      </span>
                     )}
-                  </div>
-                </button>
-              ))}
-              <div className="p-2 text-xs text-slate-500 flex items-center justify-between">
-                <span>↑↓ 選択 Enter 決定 Esc 閉じる</span>
-                <span>{searchResults.length}件</span>
+                  </button>
+                  <button
+                    onClick={() => exportNodeToCsv(selectedNode, rawEdges, rawNodes)}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                    aria-label="CSVエクスポート"
+                    title="CSVエクスポート"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                    aria-label="閉じる"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </header>
+
+              {/* Tab navigation */}
+              <nav className="flex border-b border-slate-700">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                      activeTab === tab.key
+                        ? 'text-blue-400 border-b-2 border-blue-400'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                    onClick={() => setActiveTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+
+              {/* Tab content */}
+              <div className="flex-1 overflow-auto p-4">
+                {activeTab === 'basic' && <BasicInfoTab node={selectedNode} />}
+                {activeTab === 'recipients' && (
+                  selectedNode.type === 'recipient' ? (
+                    <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
+                  ) : (
+                    <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
+                  )
+                )}
+                {activeTab === 'flow' && <FlowContextTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />}
               </div>
             </>
           )}
-        </div>
+        </aside>
       )}
-
-      {/* Node details (when selected and not searching) */}
-      {selectedNode && !query.trim() && (
-        <>
-          {/* Header with export and close buttons */}
-          <header className="p-4 border-b border-slate-700 flex justify-between items-start">
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-semibold text-white truncate">
-                {selectedNode.name}
-              </h2>
-              {/* Hierarchy path or corporate type */}
-              {selectedNode.type === 'recipient' ? (
-                <p className="text-sm text-slate-400 mt-1">
-                  {selectedNode.metadata.corporateType || '分類なし'}
-                </p>
-              ) : selectedNode.metadata.hierarchyPath && selectedNode.metadata.hierarchyPath.length > 0 ? (
-                <p className="text-sm text-slate-400 mt-1">
-                  {selectedNode.metadata.hierarchyPath.map((path, index) => (
-                    <span key={index}>
-                      {index > 0 && <span className="mx-1">→</span>}
-                      <span>{path}</span>
-                    </span>
-                  ))}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={handleShare}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors relative"
-                aria-label="リンクをコピー"
-                title="リンクをコピー"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-                {showCopySuccess && (
-                  <span className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded whitespace-nowrap">
-                    コピーしました
-                  </span>
-                )}
-              </button>
-              <button
-                onClick={() => exportNodeToCsv(selectedNode, rawEdges, rawNodes)}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
-                aria-label="CSVエクスポート"
-                title="CSVエクスポート"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-              </button>
-              <button
-                onClick={clearSelection}
-                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
-                aria-label="閉じる"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </header>
-
-          {/* Tab navigation */}
-          <nav className="flex border-b border-slate-700">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? 'text-blue-400 border-b-2 border-blue-400'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-
-          {/* Tab content */}
-          <div className="flex-1 overflow-auto p-4">
-            {activeTab === 'basic' && <BasicInfoTab node={selectedNode} />}
-            {activeTab === 'recipients' && (
-              selectedNode.type === 'recipient' ? (
-                <ProjectsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
-              ) : (
-                <RecipientsTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />
-              )
-            )}
-            {activeTab === 'flow' && <FlowContextTab node={selectedNode} edges={edges} nodes={nodes} rawNodes={rawNodes} rawEdges={rawEdges} />}
-          </div>
-        </>
-      )}
-
-      {/* Search history (when no query and no selection) */}
-      {!query.trim() && !selectedNode && searchHistory.length > 0 && (
-        <div className="flex-1 overflow-auto">
-          <div className="p-3 text-xs text-slate-500 border-b border-slate-700">
-            最近の検索
-          </div>
-          {searchHistory.map((node) => (
-            <button
-              key={node.id}
-              onClick={() => handleNodeSelect(node)}
-              className="w-full px-4 py-3 text-left hover:bg-slate-700 flex flex-col gap-1 border-b border-slate-700/50"
-            >
-              <div className="flex items-center gap-2">
-                <span className={`text-xs px-1.5 py-0.5 rounded ${
-                  node.layer === 0 ? 'bg-cyan-600/50 text-cyan-200' :
-                  node.layer === 1 ? 'bg-blue-600/50 text-blue-200' :
-                  node.layer === 2 ? 'bg-green-600/50 text-green-200' :
-                  node.layer === 3 ? 'bg-yellow-600/50 text-yellow-200' :
-                  'bg-red-600/50 text-red-200'
-                }`}>
-                  {getLayerName(node.layer)}
-                </span>
-                <span className="text-white text-sm truncate flex-1">{node.name}</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400">
-                <span>{formatAmount(node.amount)}</span>
-                {node.ministryId && node.layer > 0 && (
-                  <span className="truncate">・{node.ministryId}</span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Empty state (no query, no selection, no history) */}
-      {!query.trim() && !selectedNode && searchHistory.length === 0 && (
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="text-center text-slate-500">
-            <svg className="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <p className="text-sm">ノードを検索するか、</p>
-            <p className="text-sm">マップ上でクリックして選択</p>
-          </div>
-        </div>
-      )}
-    </aside>
+    </div>
   )
 }
