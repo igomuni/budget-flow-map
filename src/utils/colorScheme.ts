@@ -43,23 +43,11 @@ export function getMinistryColor(ministryId: string): [number, number, number] {
 }
 
 /**
- * Color for "Other" (aggregated) nodes
- * Uses a distinct muted color to differentiate from regular nodes
- */
-const OTHER_NODE_COLOR: [number, number, number, number] = [120, 120, 140, 200] // Muted blue-gray with slight transparency
-
-/**
  * Get the fill color for a node (RGBA)
  * Color varies by ministry (hue) and layer (saturation)
  * Layer 4 (recipients) use a distinct red color palette
- * "Other" nodes use a distinct muted color
  */
 export function getNodeColor(node: LayoutNode): [number, number, number, number] {
-  // "Other" (aggregated) nodes use a distinct muted color
-  if (node.metadata?.isOther) {
-    return OTHER_NODE_COLOR
-  }
-
   // Layer 4 (recipients) use vibrant red tones to stand out
   if (node.layer === 4) {
     return [244, 67, 54, 255] // Vibrant red (Material Design Red 500)
