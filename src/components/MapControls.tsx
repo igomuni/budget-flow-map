@@ -12,6 +12,12 @@ interface MapControlsProps {
   onNodeSpacingYChange: (spacing: number) => void
   onNodeWidthChange: (width: number) => void
   onFitToScreen: () => void
+  topProjects: number
+  topRecipients: number
+  threshold: number
+  onTopProjectsChange: (value: number) => void
+  onTopRecipientsChange: (value: number) => void
+  onThresholdChange: (value: number) => void
 }
 
 export function MapControls({
@@ -26,6 +32,12 @@ export function MapControls({
   onNodeSpacingYChange,
   onNodeWidthChange,
   onFitToScreen,
+  topProjects,
+  topRecipients,
+  threshold,
+  onTopProjectsChange,
+  onTopRecipientsChange,
+  onThresholdChange,
 }: MapControlsProps) {
   const [showSettings, setShowSettings] = useState(false)
 
@@ -196,6 +208,54 @@ export function MapControls({
                 step={5}
                 value={nodeWidth}
                 onChange={handleNodeWidthSlider}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            <hr className="border-gray-200" />
+
+            {/* TopN Settings */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                事業表示数: Top {topProjects}
+              </label>
+              <input
+                type="range"
+                min={100}
+                max={2000}
+                step={100}
+                value={topProjects}
+                onChange={(e) => onTopProjectsChange(parseInt(e.target.value))}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                支出先表示数: Top {topRecipients}
+              </label>
+              <input
+                type="range"
+                min={100}
+                max={3000}
+                step={100}
+                value={topRecipients}
+                onChange={(e) => onTopRecipientsChange(parseInt(e.target.value))}
+                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                最小高さ閾値: {threshold >= 1e12 ? `${(threshold / 1e12).toFixed(1)}兆円` : `${(threshold / 1e8).toFixed(0)}億円`}
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={5e12}
+                step={1e11}
+                value={threshold}
+                onChange={(e) => onThresholdChange(parseInt(e.target.value))}
                 className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
               />
             </div>

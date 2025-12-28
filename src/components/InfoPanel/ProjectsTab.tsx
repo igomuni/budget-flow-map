@@ -124,7 +124,7 @@ export function ProjectsTab({ node, rawNodes, rawEdges }: ProjectsTabProps) {
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white">
+                    <p className="text-sm font-medium text-white break-words">
                       {projectNode.name}
                       {isZeroBudget && (
                         <span className="ml-2 text-[10px] text-yellow-400" title="事業予算0円">

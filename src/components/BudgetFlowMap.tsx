@@ -6,7 +6,6 @@ import { useStore } from '@/store'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
 import { MapControls } from './MapControls'
-import { TopNSettings } from './TopNSettings'
 import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
 import { getNodeIdFromUrl, updateUrlWithNodeId } from '@/utils/urlState'
@@ -337,14 +336,6 @@ export function BudgetFlowMap() {
           width={MINIMAP_WIDTH}
         />
         {/* TopN Settings */}
-        <TopNSettings
-          topProjects={topProjects}
-          topRecipients={topRecipients}
-          threshold={threshold}
-          onTopProjectsChange={setTopProjects}
-          onTopRecipientsChange={setTopRecipients}
-          onThresholdChange={setThreshold}
-        />
         {/* Map Controls */}
         <MapControls
           zoom={currentZoom}
@@ -358,6 +349,12 @@ export function BudgetFlowMap() {
           onNodeSpacingYChange={setNodeSpacingY}
           onNodeWidthChange={setNodeWidth}
           onFitToScreen={handleFitToScreen}
+          topProjects={topProjects}
+          topRecipients={topRecipients}
+          threshold={threshold}
+          onTopProjectsChange={setTopProjects}
+          onTopRecipientsChange={setTopRecipients}
+          onThresholdChange={setThreshold}
         />
       </div>
     </div>

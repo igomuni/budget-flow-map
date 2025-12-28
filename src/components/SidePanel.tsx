@@ -271,7 +271,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
               {/* Header with export and close buttons */}
               <header className="p-4 pt-16 border-b border-slate-700 flex justify-between items-start">
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-semibold text-white truncate" title={selectedNode.name}>
+                  <h2 className="text-lg font-semibold text-white break-words">
                     {selectedNode.name}
                   </h2>
                   {/* Hierarchy path or corporate type */}
