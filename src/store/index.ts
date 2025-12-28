@@ -36,6 +36,7 @@ export const useStore = create<StoreState>()(
           selectedNodeId: nodeId,
           selectedNodeData: nodeData ?? null,
           isInfoPanelOpen: nodeId !== null,
+          isPanelCollapsed: false, // Auto-expand on selection
         }),
       clearSelection: () =>
         set({
@@ -46,11 +47,13 @@ export const useStore = create<StoreState>()(
 
       // UI state
       isInfoPanelOpen: false,
+      isPanelCollapsed: false,
       activeTab: 'basic' as InfoPanelTab,
       tooltipPosition: null,
       tooltipContent: null,
       openInfoPanel: () => set({ isInfoPanelOpen: true }),
       closeInfoPanel: () => set({ isInfoPanelOpen: false }),
+      setPanelCollapsed: (collapsed: boolean) => set({ isPanelCollapsed: collapsed }),
       setActiveTab: (tab: InfoPanelTab) => set({ activeTab: tab }),
       showTooltip: (x: number, y: number, content: string) =>
         set({ tooltipPosition: { x, y }, tooltipContent: content }),

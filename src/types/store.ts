@@ -35,11 +35,13 @@ export interface StoreState {
 
   // UI state
   isInfoPanelOpen: boolean
+  isPanelCollapsed: boolean
   activeTab: InfoPanelTab
   tooltipPosition: { x: number; y: number } | null
   tooltipContent: string | null
   openInfoPanel: () => void
   closeInfoPanel: () => void
+  setPanelCollapsed: (collapsed: boolean) => void
   setActiveTab: (tab: InfoPanelTab) => void
   showTooltip: (x: number, y: number, content: string) => void
   hideTooltip: () => void
