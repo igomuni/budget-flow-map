@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { LayoutData, LayoutNode, LayoutEdge, LayerIndex } from '@/types/layout'
+import type { LayoutData, LayoutNode, LayoutEdge, LayerIndex, NodeType } from '@/types/layout'
 
 /**
  * Viewport bounds for culling
@@ -36,14 +36,14 @@ export interface ZoomVisibilityResult {
  * Layer 0-1 (Ministry, Bureau): Always visible (threshold = 0)
  * Layer 2 (Division): 500B yen at zoom 0
  * Layer 3 (Project): 5T yen at zoom 0
- * Layer 4 (Recipient): 20T yen at zoom 0
+ * Layer 4 (Recipient): 10T yen at zoom 0 (to show major recipients like 全国健康保険協会)
  */
 const BASE_AMOUNT_THRESHOLDS: Record<LayerIndex, number> = {
   0: 0,           // Ministry: always visible
   1: 0,           // Bureau: always visible
   2: 5e11,        // Division: 500 billion yen at zoom 0
   3: 5e12,        // Project: 5 trillion yen at zoom 0
-  4: 2e13,        // Recipient: 20 trillion yen at zoom 0
+  4: 1e13,        // Recipient: 10 trillion yen at zoom 0
 }
 
 /**
@@ -85,6 +85,93 @@ export function isLayerGenerallyVisible(layer: LayerIndex, zoom: number): boolea
   }
 
   return threshold <= typicalMinAmounts[layer] * 100 // Buffer factor
+}
+
+/**
+ * Node type by layer for creating aggregated nodes
+ */
+const NODE_TYPE_BY_LAYER: Record<LayerIndex, NodeType> = {
+  0: 'ministry',
+  1: 'bureau',
+  2: 'division',
+  3: 'project',
+  4: 'recipient',
+}
+
+/**
+ * Create a dynamic "Other" aggregated node from hidden nodes
+ * Position: Placed right next to the parent node (same Y as parent)
+ * Height: Based on total amount
+ */
+function createAggregatedNode(
+  parentId: string,
+  parentNode: LayoutNode | undefined,
+  hiddenNodes: LayoutNode[],
+  layer: LayerIndex
+): LayoutNode {
+  // Calculate total amount
+  const totalAmount = hiddenNodes.reduce((sum, n) => sum + n.amount, 0)
+
+  // Height based on amount (same scale as regular nodes: 1兆円 = 10px)
+  // Minimum height of 3px for visibility
+  const height = Math.max(3, totalAmount / 1e11)
+
+  // Y position: align with parent node's center
+  // This keeps the "Other" node visually connected to its parent
+  const centerY = parentNode?.y ?? hiddenNodes[0]?.y ?? 0
+
+  // X position: same as hidden nodes' layer X position
+  const x = hiddenNodes[0]?.x ?? (parentNode?.x ?? 100) + 300
+
+  // Width: same as typical node width for this layer
+  const width = hiddenNodes[0]?.width ?? 80
+
+  // Get ministry ID from parent or hidden nodes
+  const ministryId = parentNode?.ministryId ?? hiddenNodes[0]?.ministryId
+
+  return {
+    id: `other-${parentId}-${layer}`,
+    type: NODE_TYPE_BY_LAYER[layer],
+    layer,
+    name: `その他 (${hiddenNodes.length}件)`,
+    amount: totalAmount,
+    ministryId,
+    x,
+    y: centerY,
+    width,
+    height,
+    metadata: {
+      isOther: true,
+      aggregatedCount: hiddenNodes.length,
+      aggregatedIds: hiddenNodes.map(n => n.id),
+    },
+  }
+}
+
+/**
+ * Create dynamic edges for aggregated "Other" nodes
+ */
+function createAggregatedEdge(
+  sourceId: string,
+  targetId: string,
+  value: number,
+  sourceNode: LayoutNode,
+  targetNode: LayoutNode
+): LayoutEdge {
+  // Simple straight path for aggregated edges
+  const path: [number, number][] = [
+    [sourceNode.x + sourceNode.width / 2, sourceNode.y],
+    [targetNode.x - targetNode.width / 2, targetNode.y],
+  ]
+
+  return {
+    id: `edge-${sourceId}-${targetId}`,
+    sourceId,
+    targetId,
+    value,
+    width: Math.max(1, Math.min(20, value / 1e12)), // Scale by 1T yen
+    path,
+  }
 }
 
 /**
@@ -171,12 +258,13 @@ export function calculateViewportBounds(
 }
 
 /**
- * Hook for zoom-based visibility filtering with viewport culling
+ * Hook for zoom-based visibility filtering with dynamic aggregation
  *
- * Replaces useDynamicTopN with a zoom-responsive approach:
+ * Key features:
  * - Nodes are visible if their amount exceeds the zoom-dependent threshold
+ * - Hidden nodes are dynamically aggregated into "Other" nodes by parent
+ * - "Other" nodes fill the gaps where hidden nodes would be
  * - Viewport culling removes nodes outside the visible area
- * - No "Other" aggregation - all nodes are individually visible at sufficient zoom
  */
 export function useZoomVisibility(
   data: LayoutData | null,
@@ -193,49 +281,164 @@ export function useZoomVisibility(
       thresholds.set(layer as LayerIndex, getMinVisibleAmount(layer as LayerIndex, zoom))
     }
 
-    // Step 1: Filter nodes by amount threshold
-    // "Other" (aggregated) nodes are always visible regardless of amount
-    const amountVisibleNodeIds = new Set<string>()
-    const amountVisibleNodes: LayoutNode[] = []
+    // Build node lookup map
+    const nodeMap = new Map<string, LayoutNode>()
+    for (const node of data.nodes) {
+      nodeMap.set(node.id, node)
+    }
+
+    // Build parent-child relationship map from edges
+    // parentToChildren: parentId -> childId[]
+    const parentToChildren = new Map<string, string[]>()
+    const childToParent = new Map<string, string>()
+    for (const edge of data.edges) {
+      const children = parentToChildren.get(edge.sourceId) || []
+      children.push(edge.targetId)
+      parentToChildren.set(edge.sourceId, children)
+      childToParent.set(edge.targetId, edge.sourceId)
+    }
+
+    // Step 1: Classify nodes as visible or hidden based on amount threshold
+    const visibleNodeIds = new Set<string>()
+    const hiddenNodesByParent = new Map<string, LayoutNode[]>()
+
+    // Debug: count by layer
+    const visibleByLayer = new Map<number, number>()
+    const hiddenByLayerCount = new Map<number, number>()
 
     for (const node of data.nodes) {
       const threshold = thresholds.get(node.layer)!
-      // Always show "Other" nodes, or nodes that meet the threshold
-      if (node.metadata?.isOther || node.amount >= threshold) {
-        amountVisibleNodeIds.add(node.id)
-        amountVisibleNodes.push(node)
+
+      if (node.amount >= threshold) {
+        // Node is visible
+        visibleNodeIds.add(node.id)
+        visibleByLayer.set(node.layer, (visibleByLayer.get(node.layer) || 0) + 1)
+      } else {
+        // Node is hidden - group by parent for aggregation
+        const parentId = childToParent.get(node.id) || 'root'
+        const hiddenNodes = hiddenNodesByParent.get(parentId) || []
+        hiddenNodes.push(node)
+        hiddenNodesByParent.set(parentId, hiddenNodes)
+        hiddenByLayerCount.set(node.layer, (hiddenByLayerCount.get(node.layer) || 0) + 1)
       }
     }
 
-    // Step 2: Apply viewport culling if bounds provided
-    let visibleNodes = amountVisibleNodes
+    console.log(`[ZoomVisibility] zoom=${zoom.toFixed(2)}, thresholds:`, Object.fromEntries(thresholds))
+    console.log(`[ZoomVisibility] visible by layer:`, Object.fromEntries(visibleByLayer))
+    console.log(`[ZoomVisibility] hidden by layer:`, Object.fromEntries(hiddenByLayerCount))
+    console.log(`[ZoomVisibility] hidden groups (by parent):`, hiddenNodesByParent.size)
+
+    // Step 2: Find visible ancestor for each hidden node
+    // For nodes with hidden parents, trace up to find the first visible ancestor
+    const findVisibleAncestor = (nodeId: string): string | null => {
+      let currentId = childToParent.get(nodeId)
+      while (currentId) {
+        if (visibleNodeIds.has(currentId)) {
+          return currentId
+        }
+        currentId = childToParent.get(currentId)
+      }
+      return null // No visible ancestor found
+    }
+
+    // Regroup hidden nodes by their visible ancestor
+    const hiddenNodesByVisibleAncestor = new Map<string, LayoutNode[]>()
+
+    for (const [, hiddenNodes] of hiddenNodesByParent) {
+      for (const node of hiddenNodes) {
+        const visibleAncestorId = findVisibleAncestor(node.id)
+        if (visibleAncestorId) {
+          const nodes = hiddenNodesByVisibleAncestor.get(visibleAncestorId) || []
+          nodes.push(node)
+          hiddenNodesByVisibleAncestor.set(visibleAncestorId, nodes)
+        }
+        // Nodes without any visible ancestor are orphaned (shouldn't happen normally)
+      }
+    }
+
+    // Step 3: Create dynamic "Other" aggregated nodes for hidden nodes
+    const aggregatedNodes: LayoutNode[] = []
+    const aggregatedEdges: LayoutEdge[] = []
+
+    for (const [ancestorId, hiddenNodes] of hiddenNodesByVisibleAncestor) {
+      if (hiddenNodes.length === 0) continue
+
+      const ancestorNode = nodeMap.get(ancestorId)!
+
+      // Group hidden nodes by layer
+      const hiddenByLayer = new Map<LayerIndex, LayoutNode[]>()
+      for (const node of hiddenNodes) {
+        const layerNodes = hiddenByLayer.get(node.layer) || []
+        layerNodes.push(node)
+        hiddenByLayer.set(node.layer, layerNodes)
+      }
+
+      // Create an "Other" node for each layer
+      for (const [layer, layerHiddenNodes] of hiddenByLayer) {
+        const aggregatedNode = createAggregatedNode(
+          ancestorId,
+          ancestorNode,
+          layerHiddenNodes,
+          layer
+        )
+        aggregatedNodes.push(aggregatedNode)
+        visibleNodeIds.add(aggregatedNode.id)
+
+        // Create edge from ancestor to aggregated node
+        const totalValue = layerHiddenNodes.reduce((sum, n) => sum + n.amount, 0)
+        const edge = createAggregatedEdge(
+          ancestorId,
+          aggregatedNode.id,
+          totalValue,
+          ancestorNode,
+          aggregatedNode
+        )
+        aggregatedEdges.push(edge)
+      }
+    }
+
+    console.log(`[ZoomVisibility] created ${aggregatedNodes.length} aggregated nodes, ${aggregatedEdges.length} edges`)
+
+    // Step 4: Collect all visible nodes (original + aggregated)
+    const allVisibleNodes: LayoutNode[] = []
+    for (const node of data.nodes) {
+      if (visibleNodeIds.has(node.id)) {
+        allVisibleNodes.push(node)
+      }
+    }
+    allVisibleNodes.push(...aggregatedNodes)
+
+    // Step 5: Filter edges - both endpoints must be visible
+    const visibleEdges: LayoutEdge[] = []
+    for (const edge of data.edges) {
+      if (visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)) {
+        visibleEdges.push(edge)
+      }
+    }
+    visibleEdges.push(...aggregatedEdges)
+
+    // Step 6: Apply viewport culling if bounds provided
+    let finalNodes = allVisibleNodes
+    let finalEdges = visibleEdges
     if (viewportBounds) {
-      visibleNodes = amountVisibleNodes.filter(node =>
+      finalNodes = allVisibleNodes.filter(node =>
         isNodeInViewport(node, viewportBounds)
+      )
+
+      // Build set of visible node IDs after viewport culling
+      const finalNodeIds = new Set(finalNodes.map(n => n.id))
+      finalEdges = visibleEdges.filter(edge =>
+        isEdgeInViewport(edge, viewportBounds) ||
+        finalNodeIds.has(edge.sourceId) ||
+        finalNodeIds.has(edge.targetId)
       )
     }
 
-    // Step 3: Filter edges - both endpoints must be amount-visible
-    // and at least one must be in viewport (if culling is enabled)
-    const visibleEdges = data.edges.filter(edge => {
-      // Both source and target must pass amount threshold
-      if (!amountVisibleNodeIds.has(edge.sourceId) ||
-          !amountVisibleNodeIds.has(edge.targetId)) {
-        return false
-      }
-
-      // Apply viewport culling if enabled
-      if (viewportBounds) {
-        return isEdgeInViewport(edge, viewportBounds)
-      }
-      return true
-    })
-
     return {
-      visibleNodes,
-      visibleEdges,
-      nodeCount: visibleNodes.length,
-      edgeCount: visibleEdges.length,
+      visibleNodes: finalNodes,
+      visibleEdges: finalEdges,
+      nodeCount: finalNodes.length,
+      edgeCount: finalEdges.length,
     }
   }, [data, zoom, viewportBounds])
 }

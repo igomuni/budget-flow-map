@@ -112,28 +112,20 @@ const NODE_WIDTH = 50
 const MIN_NODE_HEIGHT = 1 // 基準データと同じ最小高さ
 const MIN_OTHER_NODE_HEIGHT = 3 // 「その他」ノードの最小高さ（視認性確保）
 const NODE_VERTICAL_PADDING = 0 // 基準データでは隙間なし
-const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング（未使用）
-
-// 閾値設定（金額ベースの集約用）
-// 金額がこの閾値未満のノードは「その他」に集約される
-// 基準データ（TopN 500/1000）と同等の結果を得るための閾値
-// 金額は円単位
-const PROJECT_THRESHOLD = 13424570000 // 事業: 約134億円以上を表示（Top500相当）
-const RECIPIENT_THRESHOLD = 2575446000 // 支出先: 約26億円以上を表示（Top1000相当）
 
 // 最小ノード高さの閾値（高さ計算用）
 // 1兆円 = 1e12円
 const AMOUNT_THRESHOLD = 1e12 // 1兆円（円単位）
 
 // 金額→高さの変換
-// 基準データ: 厚生労働省 93.3兆円 → 93.3px (1兆円 = 1px スケール)
+// 1兆円 = 10px スケール（150兆円 → 1500px で画面に収まる）
 // 金額は円単位
 // isOther: 「その他」ノードは閾値を無視して金額比例で高さを計算
 function amountToHeight(amount: number, isOther: boolean = false): number {
   if (amount <= 0) return isOther ? MIN_OTHER_NODE_HEIGHT : MIN_NODE_HEIGHT
 
-  // 1兆円 = 1px のスケール
-  const scale = 1e-12 // 1 / 1兆 = 1兆円 = 1px
+  // 1兆円 = 10px のスケール
+  const scale = 1e-11 // 1 / 1000億 = 1兆円 = 10px
 
   // 「その他」ノードは閾値を無視して金額比例、最小高さも大きめ
   if (isOther) {
@@ -197,18 +189,13 @@ async function main() {
   console.log('📐 レイアウト計算を開始...')
   console.log(`   入力: ${inputPath}`)
   console.log(`   出力: ${outputPath}`)
-  console.log(`   モード: 閾値ベース集約`)
-  console.log(`   閾値: 事業 ${(PROJECT_THRESHOLD / 1e8).toFixed(0)}億円, 支出先 ${(RECIPIENT_THRESHOLD / 1e8).toFixed(0)}億円`)
+  console.log(`   モード: 全ノード（クライアント側動的集約用）`)
 
   const rawGraph: RawGraph = JSON.parse(fs.readFileSync(inputPath, 'utf-8'))
   console.log(`\n📊 グラフ読み込み完了: ${rawGraph.nodes.length} ノード, ${rawGraph.edges.length} エッジ`)
 
-  // 閾値ベースの集約を適用
-  const { nodes: aggregatedNodes, edges: aggregatedEdges } = aggregateByThreshold(rawGraph)
-  console.log(`   閾値集約後: ${aggregatedNodes.length} ノード, ${aggregatedEdges.length} エッジ`)
-
-  // 集約後のグラフを使用
-  const processGraph = { ...rawGraph, nodes: aggregatedNodes, edges: aggregatedEdges }
+  // 全ノードをそのまま使用（クライアント側で動的に集約）
+  const processGraph = rawGraph
 
   // =========================================================================
   // Step 1: ノードとエッジのマップを作成
@@ -270,10 +257,18 @@ async function main() {
     layerMap.get(node.layer)!.push(node)
   }
 
-  // 各レイヤーのノードを金額順にソート
+  // 各レイヤーのノードを金額順にソート（「その他」ノードは最後に配置）
   for (const [, layerMap] of nodesByMinistry) {
     for (const [, nodes] of layerMap) {
-      nodes.sort((a, b) => b.amount - a.amount)
+      nodes.sort((a, b) => {
+        // 「その他」ノードは常に最後
+        const aIsOther = a.metadata?.isOther === true
+        const bIsOther = b.metadata?.isOther === true
+        if (aIsOther && !bIsOther) return 1
+        if (!aIsOther && bIsOther) return -1
+        // 両方「その他」または両方通常の場合は金額順
+        return b.amount - a.amount
+      })
     }
   }
 
@@ -461,236 +456,6 @@ function findMinistryId(
     const edges = incomingEdges.get(currentId) || []
     for (const edge of edges) {
       queue.push(edge.sourceId)
-    }
-  }
-
-  return null
-}
-
-/**
- * 閾値ベースの集約
- * 閾値未満のノードを府省庁ごとの"その他"ノードに集約
- */
-function aggregateByThreshold(
-  rawGraph: RawGraph
-): { nodes: RawNode[]; edges: RawEdge[] } {
-  console.log(`\n🔄 閾値ベース集約中...`)
-  console.log(`   事業閾値: ${(PROJECT_THRESHOLD / 1e8).toFixed(0)}億円`)
-  console.log(`   支出先閾値: ${(RECIPIENT_THRESHOLD / 1e8).toFixed(0)}億円`)
-
-  const nodeMap = new Map<string, RawNode>()
-  for (const node of rawGraph.nodes) {
-    nodeMap.set(node.id, node)
-  }
-
-  // Layer 3(事業)とLayer 4(支出先)を閾値でフィルタリング
-  const projectNodes = rawGraph.nodes.filter(n => n.layer === 3)
-  const recipientNodes = rawGraph.nodes.filter(n => n.layer === 4)
-
-  const keptProjects = new Set(projectNodes.filter(n => n.amount >= PROJECT_THRESHOLD).map(n => n.id))
-  const keptRecipients = new Set(recipientNodes.filter(n => n.amount >= RECIPIENT_THRESHOLD).map(n => n.id))
-
-  console.log(`   事業: ${keptProjects.size}個別 + ${projectNodes.length - keptProjects.size}集約`)
-  console.log(`   支出先: ${keptRecipients.size}個別 + ${recipientNodes.length - keptRecipients.size}集約`)
-
-  // 府省庁ごとにノードをグループ化（集約用）
-  const nodesByMinistry = new Map<string, Map<number, RawNode[]>>()
-
-  for (const node of rawGraph.nodes) {
-    if (node.type === 'ministry') {
-      nodesByMinistry.set(node.id, new Map())
-      for (let layer = 0; layer <= 4; layer++) {
-        nodesByMinistry.get(node.id)!.set(layer, [])
-      }
-      nodesByMinistry.get(node.id)!.get(0)!.push(node)
-    }
-  }
-
-  for (const node of rawGraph.nodes) {
-    if (node.type === 'ministry') continue
-
-    const ministryId = findMinistryIdForNode(node, nodeMap, rawGraph.edges)
-    if (!ministryId || !nodesByMinistry.has(ministryId)) continue
-
-    const layerMap = nodesByMinistry.get(ministryId)!
-    if (!layerMap.has(node.layer)) layerMap.set(node.layer, [])
-    layerMap.get(node.layer)!.push(node)
-  }
-
-  // 結果ノードとOtherノードマップ
-  const resultNodes: RawNode[] = []
-  const resultEdges: RawEdge[] = []
-  const otherNodeIds = new Map<string, string>() // ministryId:layer -> otherNodeId
-
-  // Layer 0-2のノードはそのまま追加
-  for (const node of rawGraph.nodes) {
-    if (node.layer <= 2) {
-      resultNodes.push(node)
-    }
-  }
-
-  // Layer 3(事業): TopN内のノードと、府省庁ごとのOtherノード
-  for (const [ministryId, layerMap] of nodesByMinistry) {
-    const projects = layerMap.get(3) || []
-    const kept = projects.filter(n => keptProjects.has(n.id))
-    const aggregated = projects.filter(n => !keptProjects.has(n.id))
-
-    resultNodes.push(...kept)
-
-    if (aggregated.length > 0) {
-      const ministryNode = nodeMap.get(ministryId)
-      const otherNodeId = `other_${ministryId}_layer3`
-      const totalAmount = aggregated.reduce((sum, n) => sum + n.amount, 0)
-
-      const otherNode: RawNode = {
-        id: otherNodeId,
-        type: 'project',
-        layer: 3,
-        name: `その他の事業 (${aggregated.length}件)`,
-        amount: totalAmount,
-        ministryId: ministryNode?.name || '',
-        metadata: {
-          isOther: true,
-          aggregatedCount: aggregated.length,
-          aggregatedIds: aggregated.map(n => n.id)
-        }
-      }
-
-      resultNodes.push(otherNode)
-      otherNodeIds.set(`${ministryId}:3`, otherNodeId)
-    }
-  }
-
-  // Layer 4(支出先): TopN内のノードと、府省庁横断の単一「その他」ノード
-  const allRecipients: RawNode[] = []
-  for (const [, layerMap] of nodesByMinistry) {
-    const recipients = layerMap.get(4) || []
-    allRecipients.push(...recipients)
-  }
-
-  const keptRecipientsNodes = allRecipients.filter(n => keptRecipients.has(n.id))
-  const aggregatedRecipientsNodes = allRecipients.filter(n => !keptRecipients.has(n.id))
-
-  resultNodes.push(...keptRecipientsNodes)
-
-  if (aggregatedRecipientsNodes.length > 0) {
-    const otherNodeId = 'other_all_layer4'
-    const totalAmount = aggregatedRecipientsNodes.reduce((sum, n) => sum + n.amount, 0)
-
-    // 集約された支出先の全sourceministriesを収集
-    const allSourceMinistries = new Set<string>()
-    for (const node of aggregatedRecipientsNodes) {
-      if (node.metadata?.sourceMinistries) {
-        for (const ministry of node.metadata.sourceMinistries) {
-          allSourceMinistries.add(ministry)
-        }
-      }
-    }
-
-    const otherNode: RawNode = {
-      id: otherNodeId,
-      type: 'recipient',
-      layer: 4,
-      name: `その他の支出先 (${aggregatedRecipientsNodes.length}件)`,
-      amount: totalAmount,
-      metadata: {
-        isOther: true,
-        aggregatedCount: aggregatedRecipientsNodes.length,
-        aggregatedIds: aggregatedRecipientsNodes.map(n => n.id),
-        sourceMinistries: Array.from(allSourceMinistries).sort()
-      }
-    }
-
-    resultNodes.push(otherNode)
-    // 全府省庁の支出先を単一の「その他」ノードにマッピング
-    otherNodeIds.set('all:4', otherNodeId)
-  }
-
-  // エッジを再構築（Otherノードへのリダイレクト）
-  const aggregatedNodeIds = new Set(
-    Array.from(otherNodeIds.values()).flatMap(otherId => {
-      const otherNode = resultNodes.find(n => n.id === otherId)
-      return (otherNode?.metadata?.aggregatedIds as string[]) || []
-    })
-  )
-
-  for (const edge of rawGraph.edges) {
-    const source = nodeMap.get(edge.sourceId)
-    const target = nodeMap.get(edge.targetId)
-    if (!source || !target) continue
-
-    let newSourceId = edge.sourceId
-    let newTargetId = edge.targetId
-
-    // ソースが集約された場合
-    if (aggregatedNodeIds.has(edge.sourceId)) {
-      const ministryId = findMinistryIdForNode(source, nodeMap, rawGraph.edges)
-      if (ministryId) {
-        const key = `${ministryId}:${source.layer}`
-        newSourceId = otherNodeIds.get(key) || edge.sourceId
-      }
-    }
-
-    // ターゲットが集約された場合
-    if (aggregatedNodeIds.has(edge.targetId)) {
-      // Layer 4(支出先)は府省庁横断の単一「その他」ノード
-      if (target.layer === 4) {
-        newTargetId = otherNodeIds.get('all:4') || edge.targetId
-      } else {
-        const ministryId = findMinistryIdForNode(target, nodeMap, rawGraph.edges)
-        if (ministryId) {
-          const key = `${ministryId}:${target.layer}`
-          newTargetId = otherNodeIds.get(key) || edge.targetId
-        }
-      }
-    }
-
-    // 同じOtherノードへの重複エッジを防ぐ
-    const edgeKey = `${newSourceId}->${newTargetId}`
-    const existing = resultEdges.find(e => `${e.sourceId}->${e.targetId}` === edgeKey)
-
-    if (existing) {
-      existing.value += edge.value
-    } else {
-      resultEdges.push({
-        id: `edge_${newSourceId}_${newTargetId}`,
-        sourceId: newSourceId,
-        targetId: newTargetId,
-        value: edge.value
-      })
-    }
-  }
-
-  console.log(`   → 集約後: ${resultNodes.length} ノード, ${resultEdges.length} エッジ`)
-
-  return { nodes: resultNodes, edges: resultEdges }
-}
-
-/**
- * ノードが属する府省庁IDを探す（集約用）
- */
-function findMinistryIdForNode(
-  node: RawNode,
-  nodeMap: Map<string, RawNode>,
-  edges: RawEdge[]
-): string | null {
-  if (node.type === 'ministry') return node.id
-
-  if (node.ministryId) {
-    for (const [id, n] of nodeMap) {
-      if (n.type === 'ministry' && n.name === node.ministryId) {
-        return id
-      }
-    }
-  }
-
-  // エッジを辿る
-  const incomingEdges = edges.filter(e => e.targetId === node.id)
-  for (const edge of incomingEdges) {
-    const source = nodeMap.get(edge.sourceId)
-    if (source) {
-      const ministryId = findMinistryIdForNode(source, nodeMap, edges)
-      if (ministryId) return ministryId
     }
   }
 
