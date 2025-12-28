@@ -26,6 +26,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showCopySuccess, setShowCopySuccess] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -99,6 +100,7 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
   const handleNodeSelect = useCallback((node: LayoutNode) => {
     onNodeSelect(node)
     setQuery('')
+    setIsCollapsed(false) // Auto-expand when node is selected
   }, [onNodeSelect])
 
   // Handle keyboard navigation
@@ -154,12 +156,31 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
     ]
   }, [selectedNode?.type])
 
-  const showPanel = query.trim() || selectedNode
+  const showPanel = !isCollapsed && (query.trim() || selectedNode)
 
   return (
     <div className="relative h-full z-10">
-      {/* Search box - always visible, floating */}
-      <div className="absolute top-3 left-3 z-20">
+      {/* Toggle button - always visible */}
+      <button
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="absolute top-3 left-3 z-30 p-2 bg-slate-800 text-white rounded-lg shadow-lg border border-slate-700 hover:bg-slate-700 transition-colors"
+        aria-label={isCollapsed ? 'サイドパネルを展開する' : 'サイドパネルを折りたたむ'}
+        title={isCollapsed ? 'サイドパネルを展開する' : 'サイドパネルを折りたたむ'}
+      >
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {isCollapsed ? (
+            // Expand icon (chevron right)
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          ) : (
+            // Collapse icon (chevron left)
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          )}
+        </svg>
+      </button>
+
+      {/* Search box - visible when expanded */}
+      {!isCollapsed && (
+        <div className="absolute top-3 left-14 z-20">
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -184,7 +205,8 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
             </button>
           )}
         </div>
-      </div>
+        </div>
+      )}
 
       {/* Panel - only show when searching or node selected */}
       {showPanel && (
