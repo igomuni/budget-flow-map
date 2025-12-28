@@ -110,6 +110,7 @@ const LAYER_X_POSITIONS: Record<number, number> = {
 
 const NODE_WIDTH = 50
 const MIN_NODE_HEIGHT = 1 // 基準データと同じ最小高さ
+const MIN_OTHER_NODE_HEIGHT = 3 // 「その他」ノードの最小高さ（視認性確保）
 const NODE_VERTICAL_PADDING = 0 // 基準データでは隙間なし
 const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング（未使用）
 
@@ -127,17 +128,23 @@ const AMOUNT_THRESHOLD = 1e12 // 1兆円（円単位）
 // 金額→高さの変換
 // 基準データ: 厚生労働省 93.3兆円 → 93.3px (1兆円 = 1px スケール)
 // 金額は円単位
-function amountToHeight(amount: number): number {
-  if (amount <= 0) return MIN_NODE_HEIGHT
+// isOther: 「その他」ノードは閾値を無視して金額比例で高さを計算
+function amountToHeight(amount: number, isOther: boolean = false): number {
+  if (amount <= 0) return isOther ? MIN_OTHER_NODE_HEIGHT : MIN_NODE_HEIGHT
 
-  // 閾値以下は最小高さ
+  // 1兆円 = 1px のスケール
+  const scale = 1e-12 // 1 / 1兆 = 1兆円 = 1px
+
+  // 「その他」ノードは閾値を無視して金額比例、最小高さも大きめ
+  if (isOther) {
+    return Math.max(MIN_OTHER_NODE_HEIGHT, amount * scale)
+  }
+
+  // 通常ノード: 閾値以下は最小高さ
   if (amount <= AMOUNT_THRESHOLD) {
     return MIN_NODE_HEIGHT
   }
 
-  // 1兆円 = 1px のスケール
-  // amount (円) / 1e12 = 兆円 = px
-  const scale = 1e-12 // 1 / 1兆 = 1兆円 = 1px
   return Math.max(MIN_NODE_HEIGHT, amount * scale)
 }
 
@@ -301,7 +308,8 @@ async function main() {
     let nodeY = 0
 
     for (const node of nodes) {
-      const height = amountToHeight(node.amount)
+      const isOther = node.metadata?.isOther === true
+      const height = amountToHeight(node.amount, isOther)
 
       const layoutNode: LayoutNode = {
         id: node.id,
