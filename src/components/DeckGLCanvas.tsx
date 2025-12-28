@@ -5,7 +5,7 @@ import type { PickingInfo, OrthographicViewState } from '@deck.gl/core'
 import { useStore } from '@/store'
 import { createNodeLayers } from '@/layers/createNodeLayers'
 import { createEdgeLayers } from '@/layers/createEdgeLayers'
-import { calculateViewportBounds, cullNodes, cullEdges } from '@/utils/viewportCulling'
+import { useZoomVisibility, calculateViewportBounds } from '@/hooks/useZoomVisibility'
 import type { LayoutData, LayoutNode } from '@/types/layout'
 
 // Default viewport size (will be updated on resize)
@@ -188,27 +188,37 @@ export function DeckGLCanvas({
     return () => clearTimeout(timer)
   }, [viewState])
 
-  // Calculate viewport bounds and cull nodes/edges (using debounced state)
-  const { visibleNodes, visibleEdges } = useMemo(() => {
-    const target = debouncedViewState.target as [number, number]
-    const zoom = debouncedViewState.zoom ?? 0
+  // Current zoom level for visibility calculation
+  const currentZoom = typeof debouncedViewState.zoom === 'number'
+    ? debouncedViewState.zoom
+    : Array.isArray(debouncedViewState.zoom)
+      ? debouncedViewState.zoom[0]
+      : 0
 
-    const bounds = calculateViewportBounds(
+  // Calculate viewport bounds for zoom-based visibility + culling
+  const viewportBounds = useMemo(() => {
+    const target = debouncedViewState.target as [number, number]
+
+    return calculateViewportBounds(
       target,
-      zoom,
+      currentZoom,
       containerSize.width,
       containerSize.height,
       0.5 // 50% padding for smooth transitions during interaction
     )
+  }, [debouncedViewState.target, currentZoom, containerSize])
 
-    return {
-      visibleNodes: cullNodes(layoutData.nodes, bounds),
-      visibleEdges: cullEdges(layoutData.edges, bounds),
-    }
-  }, [layoutData.nodes, layoutData.edges, debouncedViewState.target, debouncedViewState.zoom, containerSize])
+  // Apply zoom-based visibility filtering with viewport culling
+  const zoomVisibilityResult = useZoomVisibility(layoutData, {
+    zoom: currentZoom,
+    viewportBounds,
+  })
 
   // Create layers with culled data
   const layers = useMemo(() => {
+    const visibleNodes = zoomVisibilityResult?.visibleNodes ?? []
+    const visibleEdges = zoomVisibilityResult?.visibleEdges ?? []
+
     return [
       // Edges behind nodes
       ...createEdgeLayers(
@@ -224,7 +234,7 @@ export function DeckGLCanvas({
         connectedNodeIds
       ),
     ]
-  }, [visibleNodes, visibleEdges, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
+  }, [zoomVisibilityResult, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
 
   // Handle hover
   const handleHover = useCallback(

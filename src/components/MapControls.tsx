@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { TopNSettingsDialog } from './TopNSettingsDialog'
+import { getLayerVisibilityStatus } from '@/hooks/useZoomVisibility'
 
 interface MapControlsProps {
   zoom: number
@@ -13,12 +13,6 @@ interface MapControlsProps {
   onNodeSpacingYChange: (spacing: number) => void
   onNodeWidthChange: (width: number) => void
   onFitToScreen: () => void
-  topProjects: number
-  topRecipients: number
-  threshold: number
-  onTopProjectsChange: (value: number) => void
-  onTopRecipientsChange: (value: number) => void
-  onThresholdChange: (value: number) => void
 }
 
 export function MapControls({
@@ -33,15 +27,11 @@ export function MapControls({
   onNodeSpacingYChange,
   onNodeWidthChange,
   onFitToScreen,
-  topProjects,
-  topRecipients,
-  threshold,
-  onTopProjectsChange,
-  onTopRecipientsChange,
-  onThresholdChange,
 }: MapControlsProps) {
   const [showSettings, setShowSettings] = useState(false)
-  const [showTopNDialog, setShowTopNDialog] = useState(false)
+
+  // Get layer visibility status for current zoom
+  const layerVisibility = getLayerVisibilityStatus(zoom)
 
   const handleZoomIn = useCallback(() => {
     onZoomChange(Math.min(zoom + 0.5, maxZoom))
@@ -78,16 +68,6 @@ export function MapControls({
     onNodeSpacingYChange(0)
     onNodeWidthChange(50)
   }, [onNodeSpacingXChange, onNodeSpacingYChange, onNodeWidthChange])
-
-  // Handle TopN settings apply
-  const handleTopNApply = useCallback(
-    (settings: { topProjects: number; topRecipients: number; threshold: number }) => {
-      onTopProjectsChange(settings.topProjects)
-      onTopRecipientsChange(settings.topRecipients)
-      onThresholdChange(settings.threshold)
-    },
-    [onTopProjectsChange, onTopRecipientsChange, onThresholdChange]
-  )
 
   // Convert zoom to percentage for display (zoom=0 → 100%)
   const zoomPercentage = Math.round(Math.pow(2, zoom) * 100)
@@ -226,16 +206,41 @@ export function MapControls({
 
             <hr className="border-gray-200" />
 
-            {/* TopN Settings Button */}
-            <button
-              onClick={() => setShowTopNDialog(true)}
-              className="w-full py-2 px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 text-sm rounded-lg transition-colors flex items-center justify-between"
-            >
-              <span>表示フィルター設定</span>
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+            {/* Layer visibility indicator */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-2">
+                表示レイヤー
+              </label>
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { layer: 0, name: '府省' },
+                  { layer: 1, name: '局' },
+                  { layer: 2, name: '課' },
+                  { layer: 3, name: '事業' },
+                  { layer: 4, name: '支出先' },
+                ].map(({ layer, name }) => {
+                  const isVisible = layerVisibility[layer as 0 | 1 | 2 | 3 | 4]
+                  return (
+                    <span
+                      key={layer}
+                      className={`px-2 py-0.5 text-xs rounded-full ${
+                        isVisible
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-400'
+                      }`}
+                      title={isVisible ? '表示中' : 'ズームインで表示'}
+                    >
+                      {name}
+                    </span>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                ズームインで詳細レイヤーが表示されます
+              </p>
+            </div>
+
+            <hr className="border-gray-200" />
 
             {/* Reset button */}
             <button
@@ -248,15 +253,6 @@ export function MapControls({
         </div>
       )}
 
-      {/* TopN Settings Dialog */}
-      <TopNSettingsDialog
-        isOpen={showTopNDialog}
-        onClose={() => setShowTopNDialog(false)}
-        topProjects={topProjects}
-        topRecipients={topRecipients}
-        threshold={threshold}
-        onApply={handleTopNApply}
-      />
     </>
   )
 }

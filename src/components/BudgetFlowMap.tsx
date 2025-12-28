@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
-import { useDynamicTopN } from '@/hooks/useDynamicTopN'
 import { useStore } from '@/store'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
@@ -17,9 +16,6 @@ export function BudgetFlowMap() {
   const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
   const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
   const [nodeWidth, setNodeWidth] = useState(50) // px単位
-  const [topProjects, setTopProjects] = useState(500)
-  const [topRecipients, setTopRecipients] = useState(1000)
-  const [threshold, setThreshold] = useState(1e12) // 1兆円 = 1,000,000,000,000円
 
   // Zustand store for selection state
   const selectedNodeId = useStore((state) => state.selectedNodeId)
@@ -44,8 +40,8 @@ export function BudgetFlowMap() {
     }
   }, [])
 
-  // 動的TopNフィルタリングを適用
-  const data = useDynamicTopN(rawData, { topProjects, topRecipients, threshold })
+  // rawDataをそのまま使用（ズームベースの可視性はDeckGLCanvasで処理）
+  const data = rawData
 
   // Animate to target position with easing (GoogleMap風)
   const animateTo = useCallback((targetX: number, targetY: number, targetZoom: number, duration: number = 500) => {
@@ -335,7 +331,6 @@ export function BudgetFlowMap() {
           onNavigate={handleMinimapNavigate}
           width={MINIMAP_WIDTH}
         />
-        {/* TopN Settings */}
         {/* Map Controls */}
         <MapControls
           zoom={currentZoom}
@@ -349,12 +344,6 @@ export function BudgetFlowMap() {
           onNodeSpacingYChange={setNodeSpacingY}
           onNodeWidthChange={setNodeWidth}
           onFitToScreen={handleFitToScreen}
-          topProjects={topProjects}
-          topRecipients={topRecipients}
-          threshold={threshold}
-          onTopProjectsChange={setTopProjects}
-          onTopRecipientsChange={setTopRecipients}
-          onThresholdChange={setThreshold}
         />
       </div>
     </div>
