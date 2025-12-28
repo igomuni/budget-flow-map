@@ -109,18 +109,24 @@ const LAYER_X_POSITIONS: Record<number, number> = {
 }
 
 const NODE_WIDTH = 50
-const MIN_NODE_HEIGHT = 2
-const NODE_VERTICAL_PADDING = 1
-const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング
+const MIN_NODE_HEIGHT = 1 // 基準データと同じ最小高さ
+const NODE_VERTICAL_PADDING = 0 // 基準データでは隙間なし
+const MINISTRY_SECTION_PADDING = 20 // 府省間のパディング（未使用）
 
-// TopN設定（デフォルト値 - 現在は未使用、クライアント側で動的フィルタリング）
-// const DEFAULT_TOP_PROJECTS = 500  // Layer 3: 事業
-// const DEFAULT_TOP_RECIPIENTS = 1000 // Layer 4: 支出先
+// 閾値設定（金額ベースの集約用）
+// 金額がこの閾値未満のノードは「その他」に集約される
+// 基準データ（TopN 500/1000）と同等の結果を得るための閾値
+// 金額は円単位
+const PROJECT_THRESHOLD = 13424570000 // 事業: 約134億円以上を表示（Top500相当）
+const RECIPIENT_THRESHOLD = 2575446000 // 支出先: 約26億円以上を表示（Top1000相当）
 
-// 閾値（1兆円 = 1,000,000百万円）
-const AMOUNT_THRESHOLD = 1000000 // 百万円単位
+// 最小ノード高さの閾値（高さ計算用）
+// 1兆円 = 1e12円
+const AMOUNT_THRESHOLD = 1e12 // 1兆円（円単位）
 
-// 金額→高さの変換（閾値以下は最小高さ、閾値以上は線形スケール、最大高さ制限なし）
+// 金額→高さの変換
+// 基準データ: 厚生労働省 93.3兆円 → 93.3px (1兆円 = 1px スケール)
+// 金額は円単位
 function amountToHeight(amount: number): number {
   if (amount <= 0) return MIN_NODE_HEIGHT
 
@@ -129,9 +135,9 @@ function amountToHeight(amount: number): number {
     return MIN_NODE_HEIGHT
   }
 
-  // 閾値以上は線形スケール（最大高さ制限なし）
-  // 金額に直接比例（スケール係数で調整）
-  const scale = 0.000002 // 1兆円 = 2px → 10兆円 = 20px
+  // 1兆円 = 1px のスケール
+  // amount (円) / 1e12 = 兆円 = px
+  const scale = 1e-12 // 1 / 1兆 = 1兆円 = 1px
   return Math.max(MIN_NODE_HEIGHT, amount * scale)
 }
 
@@ -184,11 +190,18 @@ async function main() {
   console.log('📐 レイアウト計算を開始...')
   console.log(`   入力: ${inputPath}`)
   console.log(`   出力: ${outputPath}`)
-  console.log(`   モード: 全データ（動的フィルタリング用）`)
+  console.log(`   モード: 閾値ベース集約`)
+  console.log(`   閾値: 事業 ${(PROJECT_THRESHOLD / 1e8).toFixed(0)}億円, 支出先 ${(RECIPIENT_THRESHOLD / 1e8).toFixed(0)}億円`)
 
   const rawGraph: RawGraph = JSON.parse(fs.readFileSync(inputPath, 'utf-8'))
   console.log(`\n📊 グラフ読み込み完了: ${rawGraph.nodes.length} ノード, ${rawGraph.edges.length} エッジ`)
-  console.log(`   ※ 集約なし（クライアントサイドで動的フィルタリング）`)
+
+  // 閾値ベースの集約を適用
+  const { nodes: aggregatedNodes, edges: aggregatedEdges } = aggregateByThreshold(rawGraph)
+  console.log(`   閾値集約後: ${aggregatedNodes.length} ノード, ${aggregatedEdges.length} エッジ`)
+
+  // 集約後のグラフを使用
+  const processGraph = { ...rawGraph, nodes: aggregatedNodes, edges: aggregatedEdges }
 
   // =========================================================================
   // Step 1: ノードとエッジのマップを作成
@@ -196,23 +209,22 @@ async function main() {
   console.log('\n🔧 データ構造を構築中...')
 
   const nodeMap = new Map<string, RawNode>()
-  for (const node of rawGraph.nodes) {
+  for (const node of processGraph.nodes) {
     nodeMap.set(node.id, node)
   }
 
   // エッジをソース→ターゲットのマップに
   const outgoingEdges = new Map<string, RawEdge[]>()
   const incomingEdges = new Map<string, RawEdge[]>()
-  for (const edge of rawGraph.edges) {
+  for (const edge of processGraph.edges) {
     if (!outgoingEdges.has(edge.sourceId)) outgoingEdges.set(edge.sourceId, [])
     if (!incomingEdges.has(edge.targetId)) incomingEdges.set(edge.targetId, [])
     outgoingEdges.get(edge.sourceId)!.push(edge)
     incomingEdges.get(edge.targetId)!.push(edge)
   }
 
-  // 最大金額を取得（スケーリング用）
-  const maxAmount = Math.max(...rawGraph.nodes.map((n) => n.amount))
-  const maxEdgeValue = Math.max(...rawGraph.edges.map((e) => e.value))
+  // 最大エッジ値を取得（スケーリング用）
+  const maxEdgeValue = Math.max(...processGraph.edges.map((e) => e.value))
 
   // =========================================================================
   // Step 2: 府省庁ごとにノードをグループ化
@@ -220,7 +232,7 @@ async function main() {
   console.log('\n📁 府省庁ごとにグループ化中...')
 
   // 府省庁ノードを金額順にソート
-  const ministryNodes = rawGraph.nodes
+  const ministryNodes = processGraph.nodes
     .filter((n) => n.type === 'ministry')
     .sort((a, b) => b.amount - a.amount)
 
@@ -239,7 +251,7 @@ async function main() {
   }
 
   // 府省庁以外のノードを対応する府省庁に割り当て
-  for (const node of rawGraph.nodes) {
+  for (const node of processGraph.nodes) {
     if (node.type === 'ministry') continue
 
     // 府省庁IDからグループを特定
@@ -259,81 +271,65 @@ async function main() {
   }
 
   // =========================================================================
-  // Step 3: レイアウト計算（府省庁ごとにセクション配置）
+  // Step 3: レイアウト計算（レイヤーごとに連続配置）
   // =========================================================================
   console.log('\n📏 レイアウト計算中...')
 
   const layoutNodes: LayoutNode[] = []
   const nodePositions = new Map<string, { x: number; y: number; height: number }>()
-  const ministrySections = new Map<string, { startY: number; endY: number }>()
 
-  let currentY = 0
+  // 各レイヤーのノードを収集（府省庁順、金額順にソート）
+  const nodesByLayer = new Map<number, RawNode[]>()
+  for (let layer = 0; layer <= 4; layer++) {
+    nodesByLayer.set(layer, [])
+  }
 
+  // 府省庁順に各レイヤーのノードを収集
   for (const ministry of ministryNodes) {
     const layerMap = nodesByMinistry.get(ministry.id)!
-    const sectionStartY = currentY
-
-    // 各レイヤーの高さを計算（Layer 0-3のみ、支出先は別処理）
-    const layerHeights: number[] = []
     for (let layer = 0; layer <= 4; layer++) {
       const nodes = layerMap.get(layer) || []
-      let totalHeight = 0
-      for (const node of nodes) {
-        totalHeight += amountToHeight(node.amount, maxAmount, layer) + NODE_VERTICAL_PADDING
-      }
-      layerHeights.push(totalHeight)
+      // 府省庁内は金額順でソート済み
+      nodesByLayer.get(layer)!.push(...nodes)
     }
-    // セクション高さはLayer 0-3の最大値で決定（支出先は除外）
-    const sectionHeight = Math.max(...layerHeights.slice(0, 4), 30)
+  }
 
-    // 各レイヤーのノードを配置
-    for (let layer = 0; layer <= 4; layer++) {
-      const nodes = layerMap.get(layer) || []
-      const layerX = LAYER_X_POSITIONS[layer]
+  // 各レイヤーでノードを上から順に配置
+  for (let layer = 0; layer <= 4; layer++) {
+    const nodes = nodesByLayer.get(layer)!
+    const layerX = LAYER_X_POSITIONS[layer]
+    let nodeY = 0
 
-      // このレイヤーのノードをセクション内で中央寄せ
-      const totalNodesHeight = layerHeights[layer]
-      let nodeY = sectionStartY + (sectionHeight - totalNodesHeight) / 2
+    for (const node of nodes) {
+      const height = amountToHeight(node.amount)
 
-      for (const node of nodes) {
-        const height = amountToHeight(node.amount, maxAmount, layer)
-
-        const layoutNode: LayoutNode = {
-          id: node.id,
-          type: node.type,
-          layer: node.layer as LayerIndex,
-          name: node.name,
-          amount: node.amount,
-          ministryId: node.ministryId,
-          x: layerX + NODE_WIDTH / 2,
-          y: nodeY + height / 2,
-          width: NODE_WIDTH,
-          height: height,
-          metadata: node.metadata,
-        }
-
-        layoutNodes.push(layoutNode)
-        nodePositions.set(node.id, {
-          x: layoutNode.x,
-          y: layoutNode.y,
-          height: layoutNode.height,
-        })
-
-        nodeY += height + NODE_VERTICAL_PADDING
+      const layoutNode: LayoutNode = {
+        id: node.id,
+        type: node.type,
+        layer: node.layer as LayerIndex,
+        name: node.name,
+        amount: node.amount,
+        ministryId: node.ministryId,
+        x: layerX + NODE_WIDTH / 2,
+        y: nodeY + height / 2,
+        width: NODE_WIDTH,
+        height: height,
+        metadata: node.metadata,
       }
+
+      layoutNodes.push(layoutNode)
+      nodePositions.set(node.id, {
+        x: layoutNode.x,
+        y: layoutNode.y,
+        height: layoutNode.height,
+      })
+
+      nodeY += height + NODE_VERTICAL_PADDING
     }
-
-    // 府省庁セクションの範囲を記録
-    ministrySections.set(ministry.name, {
-      startY: sectionStartY,
-      endY: sectionStartY + sectionHeight,
-    })
-
-    currentY += sectionHeight + MINISTRY_SECTION_PADDING
   }
 
   // 支出先ノード（Layer 4）の位置を調整（入エッジの平均Y位置ベース）
-  adjustRecipientPositionsByEdges(layoutNodes, nodePositions, rawGraph.edges)
+  adjustRecipientPositionsByEdges(layoutNodes, nodePositions, processGraph.edges)
 
   console.log(`   → ${layoutNodes.length} ノード配置完了`)
 
@@ -344,7 +340,7 @@ async function main() {
 
   const layoutEdges: LayoutEdge[] = []
 
-  for (const edge of rawGraph.edges) {
+  for (const edge of processGraph.edges) {
     const sourcePos = nodePositions.get(edge.sourceId)
     const targetPos = nodePositions.get(edge.targetId)
 
@@ -464,28 +460,27 @@ function findMinistryId(
 }
 
 /**
- * 全体でTopNを超えるノードを府省庁ごとの"Other"ノードに集約
- * （現在は未使用 - クライアント側で動的フィルタリング）
+ * 閾値ベースの集約
+ * 閾値未満のノードを府省庁ごとの"その他"ノードに集約
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function aggregateTopN(
-  rawGraph: RawGraph,
-  topProjects: number,
-  topRecipients: number
+function aggregateByThreshold(
+  rawGraph: RawGraph
 ): { nodes: RawNode[]; edges: RawEdge[] } {
-  console.log(`\n🔄 TopN集約中 (全体で事業: ${topProjects}, 支出先: ${topRecipients})...`)
+  console.log(`\n🔄 閾値ベース集約中...`)
+  console.log(`   事業閾値: ${(PROJECT_THRESHOLD / 1e8).toFixed(0)}億円`)
+  console.log(`   支出先閾値: ${(RECIPIENT_THRESHOLD / 1e8).toFixed(0)}億円`)
 
   const nodeMap = new Map<string, RawNode>()
   for (const node of rawGraph.nodes) {
     nodeMap.set(node.id, node)
   }
 
-  // Layer 3(事業)とLayer 4(支出先)を全体で金額順ソート
-  const projectNodes = rawGraph.nodes.filter(n => n.layer === 3).sort((a, b) => b.amount - a.amount)
-  const recipientNodes = rawGraph.nodes.filter(n => n.layer === 4).sort((a, b) => b.amount - a.amount)
+  // Layer 3(事業)とLayer 4(支出先)を閾値でフィルタリング
+  const projectNodes = rawGraph.nodes.filter(n => n.layer === 3)
+  const recipientNodes = rawGraph.nodes.filter(n => n.layer === 4)
 
-  const keptProjects = new Set(projectNodes.slice(0, topProjects).map(n => n.id))
-  const keptRecipients = new Set(recipientNodes.slice(0, topRecipients).map(n => n.id))
+  const keptProjects = new Set(projectNodes.filter(n => n.amount >= PROJECT_THRESHOLD).map(n => n.id))
+  const keptRecipients = new Set(recipientNodes.filter(n => n.amount >= RECIPIENT_THRESHOLD).map(n => n.id))
 
   console.log(`   事業: ${keptProjects.size}個別 + ${projectNodes.length - keptProjects.size}集約`)
   console.log(`   支出先: ${keptRecipients.size}個別 + ${recipientNodes.length - keptRecipients.size}集約`)
