@@ -194,12 +194,14 @@ export function useZoomVisibility(
     }
 
     // Step 1: Filter nodes by amount threshold
+    // "Other" (aggregated) nodes are always visible regardless of amount
     const amountVisibleNodeIds = new Set<string>()
     const amountVisibleNodes: LayoutNode[] = []
 
     for (const node of data.nodes) {
       const threshold = thresholds.get(node.layer)!
-      if (node.amount >= threshold) {
+      // Always show "Other" nodes, or nodes that meet the threshold
+      if (node.metadata?.isOther || node.amount >= threshold) {
         amountVisibleNodeIds.add(node.id)
         amountVisibleNodes.push(node)
       }
