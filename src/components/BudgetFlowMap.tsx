@@ -232,9 +232,6 @@ export function BudgetFlowMap() {
       const exportData = {
         exportedAt: new Date().toISOString(),
         settings: {
-          topProjects,
-          topRecipients,
-          threshold,
           nodeSpacingX,
           nodeSpacingY,
           nodeWidth,
@@ -288,7 +285,7 @@ export function BudgetFlowMap() {
     return () => {
       window.__BUDGET_FLOW_MAP_DATA__ = null
     }
-  }, [scaledData, topProjects, topRecipients, threshold, nodeSpacingX, nodeSpacingY, nodeWidth])
+  }, [scaledData, nodeSpacingX, nodeSpacingY, nodeWidth])
 
   // Handle fit to screen - calculate zoom to fit entire bounds
   const handleFitToScreen = useCallback(() => {
