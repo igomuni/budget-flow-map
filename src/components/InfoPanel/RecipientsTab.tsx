@@ -181,7 +181,7 @@ export function RecipientsTab({ node, rawNodes, rawEdges }: RecipientsTabProps) 
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
+                    <p className="text-sm font-medium text-white break-words">
                       {recipientNode.name}
                     </p>
                     {recipientNode.metadata.corporateType && (
