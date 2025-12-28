@@ -161,6 +161,20 @@ export function SidePanel({ nodes, edges, rawNodes, rawEdges, onNodeSelect }: Si
 
   return (
     <div className="relative h-full z-10">
+      {/* Expand button - visible when collapsed */}
+      {isCollapsed && (
+        <button
+          onClick={() => setPanelCollapsed(false)}
+          className="absolute top-3 left-3 z-30 p-2 bg-slate-800 text-white rounded-lg shadow-lg border border-slate-700 hover:bg-slate-700 transition-colors"
+          aria-label="サイドパネルを展開する"
+          title="サイドパネルを展開する"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+
       {/* Search box - visible when expanded */}
       {!isCollapsed && (
         <div className="absolute top-3 left-3 z-20">
