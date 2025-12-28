@@ -11,7 +11,8 @@
     "prebuild": "bash scripts/decompress-data.sh",
     "data:graph": "npx tsx scripts/generate-graph.ts",
     "data:layout": "npx tsx scripts/compute-layout.ts",
-    "data:pipeline": "npm run data:graph && npm run data:layout"
+    "data:pipeline": "npm run data:graph && npm run data:layout",
+    "data:analyze-sizes": "npx tsx scripts/analyze-node-sizes.ts"
   },
   "dependencies": {
     "@deck.gl/core": "^9.1.0",
