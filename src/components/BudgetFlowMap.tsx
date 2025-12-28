@@ -1,4 +1,13 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import type { LayoutData, LayoutNode } from '@/types/layout'
+
+// Debug用: 実際に表示されているデータをwindowに公開
+declare global {
+  interface Window {
+    __BUDGET_FLOW_MAP_DATA__: LayoutData | null
+    exportDisplayedNodes: () => void
+  }
+}
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
 import { useStore } from '@/store'
@@ -8,7 +17,6 @@ import { MapControls } from './MapControls'
 import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
 import { getNodeIdFromUrl, updateUrlWithNodeId } from '@/utils/urlState'
-import type { LayoutData, LayoutNode } from '@/types/layout'
 
 export function BudgetFlowMap() {
   const { data: rawData, loading, error } = useLayoutData()
@@ -209,6 +217,78 @@ export function BudgetFlowMap() {
       }
     }
   }, [data, nodeSpacingX, nodeSpacingY, nodeWidth])
+
+  // Debug用: 表示中のデータをwindowに公開
+  useEffect(() => {
+    window.__BUDGET_FLOW_MAP_DATA__ = scaledData
+
+    // コンソールからノード情報をダウンロードする関数
+    window.exportDisplayedNodes = () => {
+      if (!scaledData) {
+        console.log('No data available')
+        return
+      }
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        settings: {
+          topProjects,
+          topRecipients,
+          threshold,
+          nodeSpacingX,
+          nodeSpacingY,
+          nodeWidth,
+        },
+        metadata: scaledData.metadata,
+        bounds: scaledData.bounds,
+        summary: {
+          totalNodes: scaledData.nodes.length,
+          totalEdges: scaledData.edges.length,
+          byLayer: [0, 1, 2, 3, 4].map(layer => ({
+            layer,
+            count: scaledData.nodes.filter(n => n.layer === layer).length,
+            totalHeight: scaledData.nodes
+              .filter(n => n.layer === layer)
+              .reduce((sum, n) => sum + n.height, 0),
+          })),
+        },
+        nodes: scaledData.nodes.map(n => ({
+          id: n.id,
+          name: n.name,
+          type: n.type,
+          layer: n.layer,
+          amount: n.amount,
+          amountTrillion: n.amount / 1e12,
+          ministryId: n.ministryId,
+          x: n.x,
+          y: n.y,
+          width: n.width,
+          height: n.height,
+          isOther: !!n.metadata?.isOther,
+          aggregatedCount: n.metadata?.aggregatedCount,
+        })),
+      }
+
+      // JSONをダウンロード
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `displayed-nodes-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      console.log('Exported', exportData.summary.totalNodes, 'nodes')
+      console.log('By layer:', exportData.summary.byLayer)
+    }
+
+    console.log('[Debug] Displayed data available at window.__BUDGET_FLOW_MAP_DATA__')
+    console.log('[Debug] Run window.exportDisplayedNodes() to download node info')
+
+    return () => {
+      window.__BUDGET_FLOW_MAP_DATA__ = null
+    }
+  }, [scaledData, topProjects, topRecipients, threshold, nodeSpacingX, nodeSpacingY, nodeWidth])
 
   // Handle fit to screen - calculate zoom to fit entire bounds
   const handleFitToScreen = useCallback(() => {

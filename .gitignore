@@ -34,5 +34,8 @@ data/year_2024/
 # Intermediate graph data
 data/intermediate/
 
+# Analysis output
+data/analysis/
+
 # Intermediate build artifacts
 *.tsbuildinfo
