@@ -10,7 +10,7 @@ declare global {
 }
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
-import { useZoomVisibility } from '@/hooks/useZoomVisibility'
+import { useZoomVisibility, DEFAULT_THRESHOLD_SCALE, THRESHOLD_SCALE_PRESETS } from '@/hooks/useZoomVisibility'
 import { useStore } from '@/store'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
@@ -25,6 +25,7 @@ export function BudgetFlowMap() {
   const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
   const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
   const [nodeWidth, setNodeWidth] = useState(50) // px単位
+  const [thresholdScale, setThresholdScale] = useState(DEFAULT_THRESHOLD_SCALE) // 閾値スケール
 
   // Zustand store for selection state
   const selectedNodeId = useStore((state) => state.selectedNodeId)
@@ -225,6 +226,7 @@ export function BudgetFlowMap() {
   const zoomVisibility = useZoomVisibility(scaledData, {
     zoom: currentZoomForVisibility,
     viewportBounds: null, // 全体を表示するのでビューポートカリングなし
+    baseThresholdScale: thresholdScale,
   })
 
   // フィルタリング後のレイアウトデータを生成（ミニマップとFitToScreenで使用）
@@ -460,6 +462,9 @@ export function BudgetFlowMap() {
           onNodeSpacingYChange={setNodeSpacingY}
           onNodeWidthChange={setNodeWidth}
           onFitToScreen={handleFitToScreen}
+          thresholdScale={thresholdScale}
+          thresholdScalePresets={THRESHOLD_SCALE_PRESETS}
+          onThresholdScaleChange={setThresholdScale}
         />
       </div>
     </div>

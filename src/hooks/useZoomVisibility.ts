@@ -17,7 +17,25 @@ export interface ViewportBounds {
 export interface ZoomVisibilityOptions {
   zoom: number
   viewportBounds: ViewportBounds | null
+  /** Base threshold scale factor (default: 1e12 = 1兆円) */
+  baseThresholdScale?: number
 }
+
+/**
+ * Preset threshold scale values (in yen)
+ * 10億、50億、100億、500億、1000億、5000億、1兆円
+ */
+export const THRESHOLD_SCALE_PRESETS = [
+  { value: 1e9, label: '10億円' },
+  { value: 5e9, label: '50億円' },
+  { value: 1e10, label: '100億円' },
+  { value: 5e10, label: '500億円' },
+  { value: 1e11, label: '1000億円' },
+  { value: 5e11, label: '5000億円' },
+  { value: 1e12, label: '1兆円' },
+] as const
+
+export const DEFAULT_THRESHOLD_SCALE = 1e10 // 100億円
 
 /**
  * Result of zoom-based visibility filtering
@@ -31,19 +49,30 @@ export interface ZoomVisibilityResult {
 
 /**
  * Base amount thresholds at zoom=0 for each layer
- * These will be divided by 4^zoom to get actual threshold
+ * All layers use the same threshold scale (no multiplier)
  *
  * Layer 0-1 (Ministry, Bureau): Always visible (threshold = 0)
- * Layer 2 (Division): 500B yen at zoom 0
- * Layer 3 (Project): 5T yen at zoom 0
- * Layer 4 (Recipient): 10T yen at zoom 0
+ * Layer 2-4: Use threshold scale directly
  */
-const BASE_AMOUNT_THRESHOLDS: Record<LayerIndex, number> = {
-  0: 0,           // Ministry: always visible
-  1: 0,           // Bureau: always visible
-  2: 5e11,        // Division: 500 billion yen at zoom 0
-  3: 5e12,        // Project: 5 trillion yen at zoom 0
-  4: 1e13,        // Recipient: 10 trillion yen at zoom 0
+const BASE_THRESHOLD_MULTIPLIERS: Record<LayerIndex, number> = {
+  0: 0,     // Ministry: always visible
+  1: 0,     // Bureau: always visible
+  2: 1,     // Division: 1x scale
+  3: 1,     // Project: 1x scale
+  4: 1,     // Recipient: 1x scale
+}
+
+/**
+ * Calculate base amount thresholds based on scale
+ */
+function getBaseAmountThresholds(scale: number): Record<LayerIndex, number> {
+  return {
+    0: BASE_THRESHOLD_MULTIPLIERS[0] * scale,
+    1: BASE_THRESHOLD_MULTIPLIERS[1] * scale,
+    2: BASE_THRESHOLD_MULTIPLIERS[2] * scale,
+    3: BASE_THRESHOLD_MULTIPLIERS[3] * scale,
+    4: BASE_THRESHOLD_MULTIPLIERS[4] * scale,
+  }
 }
 
 /**
@@ -58,14 +87,38 @@ const LAYER_X_POSITIONS: Record<LayerIndex, number> = {
 }
 
 const NODE_WIDTH = 50
+const MIN_NODE_HEIGHT = 1 // 閾値以下のノードの最小高さ
+const MIN_VISIBLE_HEIGHT = 5 // 閾値以上のノードの最小高さ（視認性確保）
+const HEIGHT_SCALE = 1e-11 // 1兆円 = 10px
+
+/**
+ * Calculate node height from amount
+ * Same logic as compute-layout.ts but with configurable threshold
+ */
+function amountToHeight(amount: number, threshold: number): number {
+  if (amount <= 0) return MIN_NODE_HEIGHT
+
+  // 閾値以下は最小高さ
+  if (amount < threshold) {
+    return MIN_NODE_HEIGHT
+  }
+
+  // 閾値以上は金額比例（1兆円 = 10px）、ただし最小視認高さを保証
+  return Math.max(MIN_VISIBLE_HEIGHT, amount * HEIGHT_SCALE)
+}
 
 /**
  * Calculate the minimum visible amount for a layer at given zoom level
  *
  * Formula: threshold = baseThreshold / 4^zoom
  */
-export function getMinVisibleAmount(layer: LayerIndex, zoom: number): number {
-  const baseThreshold = BASE_AMOUNT_THRESHOLDS[layer]
+export function getMinVisibleAmount(
+  layer: LayerIndex,
+  zoom: number,
+  scale: number = DEFAULT_THRESHOLD_SCALE
+): number {
+  const baseThresholds = getBaseAmountThresholds(scale)
+  const baseThreshold = baseThresholds[layer]
   if (baseThreshold === 0) return 0
 
   const effectiveZoom = Math.max(0, zoom)
@@ -77,8 +130,12 @@ export function getMinVisibleAmount(layer: LayerIndex, zoom: number): number {
 /**
  * Check if a layer has any visible nodes at the given zoom level
  */
-export function isLayerGenerallyVisible(layer: LayerIndex, zoom: number): boolean {
-  const threshold = getMinVisibleAmount(layer, zoom)
+export function isLayerGenerallyVisible(
+  layer: LayerIndex,
+  zoom: number,
+  scale: number = DEFAULT_THRESHOLD_SCALE
+): boolean {
+  const threshold = getMinVisibleAmount(layer, zoom, scale)
 
   const typicalMinAmounts: Record<LayerIndex, number> = {
     0: 1e9,
@@ -181,7 +238,7 @@ export function useZoomVisibility(
   data: LayoutData | null,
   options: ZoomVisibilityOptions
 ): ZoomVisibilityResult | null {
-  const { zoom, viewportBounds } = options
+  const { zoom, viewportBounds, baseThresholdScale = DEFAULT_THRESHOLD_SCALE } = options
 
   return useMemo(() => {
     if (!data) return null
@@ -189,7 +246,7 @@ export function useZoomVisibility(
     // Calculate visibility thresholds for each layer
     const thresholds = new Map<LayerIndex, number>()
     for (let layer = 0; layer <= 4; layer++) {
-      thresholds.set(layer as LayerIndex, getMinVisibleAmount(layer as LayerIndex, zoom))
+      thresholds.set(layer as LayerIndex, getMinVisibleAmount(layer as LayerIndex, zoom, baseThresholdScale))
     }
 
     // Group nodes by layer
@@ -200,6 +257,11 @@ export function useZoomVisibility(
     for (const node of data.nodes) {
       nodesByLayer.get(node.layer)!.push(node)
     }
+
+    // Get unique ministry IDs from Layer 0 nodes, sorted by amount
+    const ministryNodes = nodesByLayer.get(0 as LayerIndex)!
+    const sortedMinistries = [...ministryNodes].sort((a, b) => b.amount - a.amount)
+    const ministryOrder = sortedMinistries.map(n => n.ministryId || n.id)
 
     // Process each layer: separate visible and hidden nodes, recalculate Y positions
     const visibleNodeIds = new Set<string>()
@@ -215,66 +277,135 @@ export function useZoomVisibility(
       const nodes = nodesByLayer.get(layerIndex)!
       const threshold = thresholds.get(layerIndex)!
 
-      // Sort by amount descending
-      const sortedNodes = [...nodes].sort((a, b) => b.amount - a.amount)
+      let sortedNodes: LayoutNode[]
 
-      const visibleNodes: LayoutNode[] = []
-      const hiddenNodes: LayoutNode[] = []
-
-      for (const node of sortedNodes) {
-        if (node.amount >= threshold) {
-          visibleNodes.push(node)
-          visibleNodeIds.add(node.id)
-        } else {
-          hiddenNodes.push(node)
+      if (layer <= 2) {
+        // Layer 0-2 (府省, 局, 課): 府省庁ごとにグループ化し、その中で金額順ソート
+        // Group nodes by ministry
+        const nodesByMinistry = new Map<string, LayoutNode[]>()
+        for (const ministryId of ministryOrder) {
+          nodesByMinistry.set(ministryId, [])
         }
+        nodesByMinistry.set('unknown', []) // For nodes without ministryId
+
+        for (const node of nodes) {
+          const ministryId = node.ministryId || (layer === 0 ? node.id : 'unknown')
+          if (nodesByMinistry.has(ministryId)) {
+            nodesByMinistry.get(ministryId)!.push(node)
+          } else {
+            nodesByMinistry.get('unknown')!.push(node)
+          }
+        }
+
+        // Sort each ministry group by amount and concatenate
+        sortedNodes = []
+        for (const ministryId of ministryOrder) {
+          const ministryNodes = nodesByMinistry.get(ministryId) || []
+          ministryNodes.sort((a, b) => b.amount - a.amount)
+          sortedNodes.push(...ministryNodes)
+        }
+        // Add unknown ministry nodes at the end
+        const unknownNodes = nodesByMinistry.get('unknown') || []
+        unknownNodes.sort((a, b) => b.amount - a.amount)
+        sortedNodes.push(...unknownNodes)
+      } else {
+        // Layer 3-4 (事業, 支出先): 全体で金額順ソート
+        sortedNodes = [...nodes].sort((a, b) => b.amount - a.amount)
       }
 
-      visibleByLayer.set(layer, visibleNodes.length)
-      hiddenByLayer.set(layer, hiddenNodes.length)
-
-      // Recalculate Y positions for visible nodes (pack them tightly)
       const layerX = LAYER_X_POSITIONS[layerIndex] + NODE_WIDTH / 2
       let currentY = 0
 
-      for (const node of visibleNodes) {
-        // Create repositioned node with new Y coordinate
-        const repositionedNode: LayoutNode = {
-          ...node,
-          x: layerX,
-          y: currentY + node.height / 2,
+      if (layer <= 2) {
+        // Layer 0-2 (府省, 局, 課): 集約せず全ノード表示、閾値以下は最小高さ
+        let aboveThresholdCount = 0
+        let belowThresholdCount = 0
+
+        for (const node of sortedNodes) {
+          const isAboveThreshold = node.amount >= threshold
+          if (isAboveThreshold) {
+            aboveThresholdCount++
+          } else {
+            belowThresholdCount++
+          }
+
+          // 金額から高さを再計算（閾値以下は最小高さ）
+          const effectiveHeight = amountToHeight(node.amount, threshold)
+
+          const repositionedNode: LayoutNode = {
+            ...node,
+            x: layerX,
+            y: currentY + effectiveHeight / 2,
+            height: effectiveHeight,
+          }
+          repositionedNodes.push(repositionedNode)
+          visibleNodeIds.add(node.id)
+          newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y })
+
+          currentY += effectiveHeight
         }
-        repositionedNodes.push(repositionedNode)
-        newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y })
 
-        currentY += node.height // No gap between nodes
-      }
+        visibleByLayer.set(layer, aboveThresholdCount)
+        hiddenByLayer.set(layer, belowThresholdCount)
+      } else {
+        // Layer 3-4 (事業, 支出先): 閾値以上のみ表示、閾値以下は「その他」に集約
+        const visibleNodes: LayoutNode[] = []
+        const hiddenNodes: LayoutNode[] = []
 
-      // Create "Other" node if there are hidden nodes
-      if (hiddenNodes.length > 0) {
-        const totalAmount = hiddenNodes.reduce((sum, n) => sum + n.amount, 0)
-        const height = Math.max(3, totalAmount / 1e11) // 1兆円 = 10px
-
-        const otherNode: LayoutNode = {
-          id: `other-layer-${layer}`,
-          type: layer === 4 ? 'recipient' : layer === 3 ? 'project' : layer === 2 ? 'division' : layer === 1 ? 'bureau' : 'ministry',
-          layer: layerIndex,
-          name: `その他 (${hiddenNodes.length}件)`,
-          amount: totalAmount,
-          ministryId: undefined,
-          x: layerX,
-          y: currentY + height / 2,
-          width: NODE_WIDTH,
-          height,
-          metadata: {
-            isOther: true,
-            aggregatedCount: hiddenNodes.length,
-            aggregatedIds: hiddenNodes.map(n => n.id),
-          },
+        for (const node of sortedNodes) {
+          if (node.amount >= threshold) {
+            visibleNodes.push(node)
+            visibleNodeIds.add(node.id)
+          } else {
+            hiddenNodes.push(node)
+          }
         }
-        repositionedNodes.push(otherNode)
-        visibleNodeIds.add(otherNode.id)
-        newNodePositions.set(otherNode.id, { x: otherNode.x, y: otherNode.y })
+
+        visibleByLayer.set(layer, visibleNodes.length)
+        hiddenByLayer.set(layer, hiddenNodes.length)
+
+        for (const node of visibleNodes) {
+          // 金額から高さを再計算
+          const effectiveHeight = amountToHeight(node.amount, threshold)
+
+          const repositionedNode: LayoutNode = {
+            ...node,
+            x: layerX,
+            y: currentY + effectiveHeight / 2,
+            height: effectiveHeight,
+          }
+          repositionedNodes.push(repositionedNode)
+          newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y })
+
+          currentY += effectiveHeight
+        }
+
+        // Create "Other" node if there are hidden nodes
+        if (hiddenNodes.length > 0) {
+          const totalAmount = hiddenNodes.reduce((sum, n) => sum + n.amount, 0)
+          const height = Math.max(MIN_NODE_HEIGHT, totalAmount / 1e11) // 1兆円 = 10px
+
+          const otherNode: LayoutNode = {
+            id: `other-layer-${layer}`,
+            type: layer === 4 ? 'recipient' : 'project',
+            layer: layerIndex,
+            name: `その他 (${hiddenNodes.length}件)`,
+            amount: totalAmount,
+            ministryId: undefined,
+            x: layerX,
+            y: currentY + height / 2,
+            width: NODE_WIDTH,
+            height,
+            metadata: {
+              isOther: true,
+              aggregatedCount: hiddenNodes.length,
+              aggregatedIds: hiddenNodes.map(n => n.id),
+            },
+          }
+          repositionedNodes.push(otherNode)
+          visibleNodeIds.add(otherNode.id)
+          newNodePositions.set(otherNode.id, { x: otherNode.x, y: otherNode.y })
+        }
       }
     }
 
@@ -333,18 +464,21 @@ export function useZoomVisibility(
       nodeCount: finalNodes.length,
       edgeCount: finalEdges.length,
     }
-  }, [data, zoom, viewportBounds])
+  }, [data, zoom, viewportBounds, baseThresholdScale])
 }
 
 /**
  * Get layer visibility status for UI indicator
  */
-export function getLayerVisibilityStatus(zoom: number): Record<LayerIndex, boolean> {
+export function getLayerVisibilityStatus(
+  zoom: number,
+  scale: number = DEFAULT_THRESHOLD_SCALE
+): Record<LayerIndex, boolean> {
   return {
     0: true,
     1: true,
-    2: isLayerGenerallyVisible(2, zoom),
-    3: isLayerGenerallyVisible(3, zoom),
-    4: isLayerGenerallyVisible(4, zoom),
+    2: isLayerGenerallyVisible(2, zoom, scale),
+    3: isLayerGenerallyVisible(3, zoom, scale),
+    4: isLayerGenerallyVisible(4, zoom, scale),
   }
 }
