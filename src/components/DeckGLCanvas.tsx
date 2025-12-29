@@ -5,21 +5,20 @@ import type { PickingInfo, OrthographicViewState } from '@deck.gl/core'
 import { useStore } from '@/store'
 import { createNodeLayers } from '@/layers/createNodeLayers'
 import { createEdgeLayers } from '@/layers/createEdgeLayers'
-import { useZoomVisibility, calculateViewportBounds } from '@/hooks/useZoomVisibility'
-import type { LayoutData, LayoutNode } from '@/types/layout'
-
-// Default viewport size (will be updated on resize)
-const DEFAULT_VIEWPORT_WIDTH = 1920
-const DEFAULT_VIEWPORT_HEIGHT = 1080
+import type { LayoutData, LayoutNode, LayoutEdge } from '@/types/layout'
 
 interface DeckGLCanvasProps {
-  layoutData: LayoutData
+  layoutData: LayoutData // 元データ（エッジ接続情報用）
+  visibleNodes: LayoutNode[] // フィルタリング済みノード
+  visibleEdges: LayoutEdge[] // フィルタリング済みエッジ
   onViewStateChange?: (viewState: OrthographicViewState) => void
   externalViewState?: OrthographicViewState | null
 }
 
 export function DeckGLCanvas({
   layoutData,
+  visibleNodes,
+  visibleEdges,
   onViewStateChange,
   externalViewState,
 }: DeckGLCanvasProps) {
@@ -30,25 +29,8 @@ export function DeckGLCanvas({
   const showTooltip = useStore((state) => state.showTooltip)
   const hideTooltip = useStore((state) => state.hideTooltip)
 
-  // Track container size for viewport culling
+  // Ref for container
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerSize, setContainerSize] = useState({ width: DEFAULT_VIEWPORT_WIDTH, height: DEFAULT_VIEWPORT_HEIGHT })
-
-  // Update container size on resize
-  useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        })
-      }
-    }
-
-    updateSize()
-    window.addEventListener('resize', updateSize)
-    return () => window.removeEventListener('resize', updateSize)
-  }, [])
 
   // Initialize view state centered on bounds with appropriate zoom
   const initialViewState = useMemo((): OrthographicViewState => {
@@ -177,48 +159,8 @@ export function DeckGLCanvas({
     return { connectedEdges: edges, connectedNodeIds: nodeIds }
   }, [layoutData.edges, hoveredNodeId, selectedNodeId])
 
-  // Debounced viewport state for culling (only update when user stops interacting)
-  const [debouncedViewState, setDebouncedViewState] = useState(viewState)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedViewState(viewState)
-    }, 100) // 100ms debounce
-
-    return () => clearTimeout(timer)
-  }, [viewState])
-
-  // Current zoom level for visibility calculation
-  const currentZoom = typeof debouncedViewState.zoom === 'number'
-    ? debouncedViewState.zoom
-    : Array.isArray(debouncedViewState.zoom)
-      ? debouncedViewState.zoom[0]
-      : 0
-
-  // Calculate viewport bounds for zoom-based visibility + culling
-  const viewportBounds = useMemo(() => {
-    const target = debouncedViewState.target as [number, number]
-
-    return calculateViewportBounds(
-      target,
-      currentZoom,
-      containerSize.width,
-      containerSize.height,
-      0.5 // 50% padding for smooth transitions during interaction
-    )
-  }, [debouncedViewState.target, currentZoom, containerSize])
-
-  // Apply zoom-based visibility filtering with viewport culling
-  const zoomVisibilityResult = useZoomVisibility(layoutData, {
-    zoom: currentZoom,
-    viewportBounds,
-  })
-
-  // Create layers with culled data
+  // Create layers with passed visible nodes/edges
   const layers = useMemo(() => {
-    const visibleNodes = zoomVisibilityResult?.visibleNodes ?? []
-    const visibleEdges = zoomVisibilityResult?.visibleEdges ?? []
-
     return [
       // Edges behind nodes
       ...createEdgeLayers(
@@ -234,7 +176,7 @@ export function DeckGLCanvas({
         connectedNodeIds
       ),
     ]
-  }, [zoomVisibilityResult, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
+  }, [visibleNodes, visibleEdges, hoveredNodeId, selectedNodeId, connectedEdges, connectedNodeIds])
 
   // Handle hover
   const handleHover = useCallback(

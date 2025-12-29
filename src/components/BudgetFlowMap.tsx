@@ -10,6 +10,7 @@ declare global {
 }
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
+import { useZoomVisibility } from '@/hooks/useZoomVisibility'
 import { useStore } from '@/store'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
@@ -218,6 +219,40 @@ export function BudgetFlowMap() {
     }
   }, [data, nodeSpacingX, nodeSpacingY, nodeWidth])
 
+  // ズームベースのフィルタリング（ビューポートカリングなし）
+  // 注: フックは常に同じ順序で呼び出す必要があるため、早期リターンの前に配置
+  const currentZoomForVisibility = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+  const zoomVisibility = useZoomVisibility(scaledData, {
+    zoom: currentZoomForVisibility,
+    viewportBounds: null, // 全体を表示するのでビューポートカリングなし
+  })
+
+  // フィルタリング後のレイアウトデータを生成（ミニマップとFitToScreenで使用）
+  const filteredLayoutData = useMemo((): LayoutData | null => {
+    if (!scaledData || !zoomVisibility) return null
+
+    // バウンディングボックスを再計算
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const node of zoomVisibility.visibleNodes) {
+      minX = Math.min(minX, node.x - node.width / 2)
+      maxX = Math.max(maxX, node.x + node.width / 2)
+      minY = Math.min(minY, node.y - node.height / 2)
+      maxY = Math.max(maxY, node.y + node.height / 2)
+    }
+
+    return {
+      ...scaledData,
+      nodes: zoomVisibility.visibleNodes,
+      edges: zoomVisibility.visibleEdges,
+      bounds: {
+        minX: Math.floor(minX),
+        maxX: Math.ceil(maxX),
+        minY: Math.floor(minY),
+        maxY: Math.ceil(maxY),
+      },
+    }
+  }, [scaledData, zoomVisibility])
+
   // Debug用: 表示中のデータをwindowに公開
   useEffect(() => {
     window.__BUDGET_FLOW_MAP_DATA__ = scaledData
@@ -287,17 +322,17 @@ export function BudgetFlowMap() {
     }
   }, [scaledData, nodeSpacingX, nodeSpacingY, nodeWidth])
 
-  // Handle fit to screen - calculate zoom to fit entire bounds
+  // Handle fit to screen - calculate zoom to fit filtered bounds
   const handleFitToScreen = useCallback(() => {
-    if (!scaledData) return
+    if (!filteredLayoutData) return
 
-    // Calculate center of bounds
-    const centerX = (scaledData.bounds.minX + scaledData.bounds.maxX) / 2
-    const centerY = (scaledData.bounds.minY + scaledData.bounds.maxY) / 2
+    // Calculate center of filtered bounds
+    const centerX = (filteredLayoutData.bounds.minX + filteredLayoutData.bounds.maxX) / 2
+    const centerY = (filteredLayoutData.bounds.minY + filteredLayoutData.bounds.maxY) / 2
 
     // Calculate bounds size
-    const boundsWidth = scaledData.bounds.maxX - scaledData.bounds.minX
-    const boundsHeight = scaledData.bounds.maxY - scaledData.bounds.minY
+    const boundsWidth = filteredLayoutData.bounds.maxX - filteredLayoutData.bounds.minX
+    const boundsHeight = filteredLayoutData.bounds.maxY - filteredLayoutData.bounds.minY
 
     // Use actual window size (accounting for minimap width)
     const MINIMAP_WIDTH = 120
@@ -312,7 +347,7 @@ export function BudgetFlowMap() {
 
     // Animate to fit position
     animateTo(centerX, centerY, fitZoom, 800)
-  }, [scaledData, animateTo])
+  }, [filteredLayoutData, animateTo])
 
   // Initial load: select node from URL or fit to screen
   useEffect(() => {
@@ -397,17 +432,21 @@ export function BudgetFlowMap() {
         <div className="absolute inset-0" style={{ right: MINIMAP_WIDTH }}>
           <DeckGLCanvas
             layoutData={scaledData}
+            visibleNodes={zoomVisibility?.visibleNodes ?? []}
+            visibleEdges={zoomVisibility?.visibleEdges ?? []}
             onViewStateChange={handleViewStateChange}
             externalViewState={viewState}
           />
         </div>
         {/* Minimap on right */}
-        <Minimap
-          layoutData={scaledData}
-          viewState={effectiveViewState}
-          onNavigate={handleMinimapNavigate}
-          width={MINIMAP_WIDTH}
-        />
+        {filteredLayoutData && (
+          <Minimap
+            layoutData={filteredLayoutData}
+            viewState={effectiveViewState}
+            onNavigate={handleMinimapNavigate}
+            width={MINIMAP_WIDTH}
+          />
+        )}
         {/* Map Controls */}
         <MapControls
           zoom={currentZoom}
