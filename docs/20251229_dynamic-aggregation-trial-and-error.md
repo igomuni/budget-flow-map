@@ -147,6 +147,147 @@ const centerY = parentNode?.y ?? hiddenNodes[0]?.y ?? 0
 
 ---
 
+### Phase 8: レイヤー単位集約への移行（大幅改善）
+
+#### 問題: 親ベース集約の複雑さ
+
+- 「その他」ノードが親ごとに生成され、数百個になる
+- 親が非表示の場合の可視祖先探索が複雑
+- ノード間に隙間が残る（非表示ノードのY位置が確保されたまま）
+
+#### 解決策: レイヤー単位での集約に変更
+
+```typescript
+// 各レイヤーで金額順ソート → しきい値でフィルタ → 1つの「その他」に集約
+for (let layer = 0; layer <= 4; layer++) {
+  const sortedNodes = [...nodes].sort((a, b) => b.amount - a.amount)
+  const visibleNodes = sortedNodes.filter(n => n.amount >= threshold)
+  const hiddenNodes = sortedNodes.filter(n => n.amount < threshold)
+
+  // 「その他」ノードは1つだけ
+  if (hiddenNodes.length > 0) {
+    const otherNode = createOtherNode(hiddenNodes, layer)
+  }
+}
+```
+
+**効果**:
+- 支出先レイヤーで4つの個別ノード + 1つの集約ノードのみ表示
+- 構造がシンプルになり理解しやすい
+
+---
+
+### Phase 9: Y座標の動的再計算（隙間の解消）
+
+#### 問題: ノード間の不自然な隙間
+
+- 事前計算されたY位置をそのまま使用していた
+- 非表示ノードのY位置分の隙間が残る
+- 「ズームすると集約ノードから個別ノードが出現」という動作が期待通りでない
+
+#### 解決策: 表示ノードのY座標を動的に再計算
+
+```typescript
+// 表示ノードを隙間なく詰めて配置
+let currentY = 0
+for (const node of visibleNodes) {
+  const repositionedNode = {
+    ...node,
+    y: currentY + node.height / 2,
+  }
+  currentY += node.height // 隙間なし
+}
+
+// 「その他」ノードは表示ノードの直下に配置
+if (hiddenNodes.length > 0) {
+  const otherNode = {
+    ...createOtherNode(hiddenNodes),
+    y: currentY + otherHeight / 2,
+  }
+}
+```
+
+**効果**:
+- ノード間の隙間が解消
+- ズームインで閾値が下がり、「その他」から個別ノードが出現する動作が実現
+
+---
+
+### Phase 10: 「その他」ノードへのエッジ非表示
+
+#### 問題: 集約ノードへのエッジをどう描画するか
+
+選択肢:
+1. 集約されたノードすべてのエッジを「その他」に接続
+2. エッジは描画しない（シンプル）
+
+#### 解決: エッジは描画しない
+
+```typescript
+// 「その他」ノードへのエッジはスキップ
+if (edge.targetId.startsWith('other-') || edge.sourceId.startsWith('other-')) {
+  continue
+}
+```
+
+**理由**:
+- 集約ノードへの大量のエッジは視覚的にノイズになる
+- ズームインすれば個別ノードとエッジが表示される
+
+---
+
+### Phase 11: ミニマップとFitToScreenの座標系統一
+
+#### 問題: ミニマップの表示範囲が実際の表示と一致しない
+
+- ミニマップは元データ（約25,000px高さ）を表示
+- メインビューはフィルタリング後のデータ（約2,500px高さ）を表示
+- Fitボタンで3%ズームになる（本来は40%）
+
+#### 原因の分析
+
+1. `DeckGLCanvas` と `BudgetFlowMap` で別々に `useZoomVisibility` を呼び出していた
+2. ミニマップは `scaledData`（元データ）を受け取っていた
+3. `handleFitToScreen` は `scaledData.bounds` を使用していた
+
+#### 解決策: フィルタリングロジックの一元化
+
+```typescript
+// BudgetFlowMap.tsx
+
+// 1. フィルタリングを一元管理
+const zoomVisibility = useZoomVisibility(scaledData, {
+  zoom: currentZoom,
+  viewportBounds: null,
+})
+
+// 2. フィルタリング後のレイアウトデータを生成
+const filteredLayoutData = useMemo(() => {
+  // バウンディングボックスを再計算
+  for (const node of zoomVisibility.visibleNodes) {
+    minX = Math.min(minX, node.x - node.width / 2)
+    // ...
+  }
+  return { ...scaledData, nodes: visibleNodes, bounds: newBounds }
+}, [scaledData, zoomVisibility])
+
+// 3. 両方のコンポーネントに同じデータを渡す
+<DeckGLCanvas visibleNodes={zoomVisibility.visibleNodes} ... />
+<Minimap layoutData={filteredLayoutData} ... />
+```
+
+**変更点**:
+- `DeckGLCanvas` から `useZoomVisibility` を削除
+- `BudgetFlowMap` で一元的にフィルタリング
+- `handleFitToScreen` が `filteredLayoutData.bounds` を使用
+
+**効果**:
+- メインビューとミニマップが同じ座標系を共有
+- Fitボタンで正しいズーム（約40%）にフィット
+- ミニマップの表示範囲が正確
+
+---
+
 ## 現在の実装状態
 
 ### しきい値設定
@@ -168,8 +309,19 @@ const centerY = parentNode?.y ?? hiddenNodes[0]?.y ?? 0
 ### 「その他」ノードの視覚表現
 
 - **色**: 紫色 `[156, 39, 176, 200]`
-- **位置**: 親ノードのY中心に揃え
-- **高さ**: 集約された金額の合計に比例
+- **位置**: 各レイヤーの表示ノードの直下
+- **高さ**: 集約された金額の合計に比例（1兆円 = 10px）
+- **エッジ**: なし（ズームインすれば個別ノードが出現）
+
+### アーキテクチャ
+
+```
+BudgetFlowMap
+  ├── useZoomVisibility (フィルタリング一元管理)
+  │     └── filteredLayoutData (bounds再計算)
+  ├── DeckGLCanvas (visibleNodes, visibleEdges受け取り)
+  └── Minimap (filteredLayoutData受け取り)
+```
 
 ---
 
@@ -178,7 +330,7 @@ const centerY = parentNode?.y ?? hiddenNodes[0]?.y ?? 0
 1. **console.log の削除**: デバッグ用ログを本番前に削除
 2. **ズーム時の閾値調整**: `4^zoom` での除算が適切か検証
 3. **パフォーマンス**: 3万ノードでの useMemo 再計算コスト
-4. **エッジの描画**: 集約ノードへのエッジがシンプルな直線になっている
+4. **府省庁ごとのまとまり**: 現在は全レイヤーでグローバルにソート、府省庁ごとのグループ化は未対応
 
 ---
 
@@ -188,3 +340,6 @@ const centerY = parentNode?.y ?? hiddenNodes[0]?.y ?? 0
 2. **階層構造の考慮**: 親が非表示の場合の処理が重要
 3. **スケール設計**: 「画面に収まる」と「視認性」のバランス
 4. **ユーザーフィードバックの重要性**: 実際の表示を見ながらの調整が必要
+5. **座標系の統一**: 複数コンポーネントで同じデータを共有する場合、boundsの再計算が必要
+6. **フィルタリングの一元化**: 複数箇所で同じフィルタリングを行うと座標系がズレる
+7. **シンプルな解決策**: 親ベース集約より、レイヤー単位集約の方がシンプルで効果的
