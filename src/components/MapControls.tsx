@@ -1,10 +1,5 @@
 import { useCallback, useState } from 'react'
-import { getLayerVisibilityStatus, DEFAULT_THRESHOLD_SCALE } from '@/hooks/useZoomVisibility'
-
-interface ThresholdScalePreset {
-  value: number
-  label: string
-}
+import { getLayerVisibilityStatus } from '@/hooks/useZoomVisibility'
 
 interface MapControlsProps {
   zoom: number
@@ -18,9 +13,6 @@ interface MapControlsProps {
   onNodeSpacingYChange: (spacing: number) => void
   onNodeWidthChange: (width: number) => void
   onFitToScreen: () => void
-  thresholdScale: number
-  thresholdScalePresets: readonly ThresholdScalePreset[]
-  onThresholdScaleChange: (scale: number) => void
 }
 
 export function MapControls({
@@ -35,30 +27,11 @@ export function MapControls({
   onNodeSpacingYChange,
   onNodeWidthChange,
   onFitToScreen,
-  thresholdScale,
-  thresholdScalePresets,
-  onThresholdScaleChange,
 }: MapControlsProps) {
   const [showSettings, setShowSettings] = useState(false)
 
-  // Get layer visibility status for current zoom and threshold scale
-  const layerVisibility = getLayerVisibilityStatus(zoom, thresholdScale)
-
-  // Find current threshold scale label
-  const currentThresholdLabel = thresholdScalePresets.find(p => p.value === thresholdScale)?.label || '不明'
-
-  // Find current preset index for slider
-  const currentPresetIndex = thresholdScalePresets.findIndex(p => p.value === thresholdScale)
-
-  const handleThresholdSlider = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const index = parseInt(e.target.value, 10)
-      if (index >= 0 && index < thresholdScalePresets.length) {
-        onThresholdScaleChange(thresholdScalePresets[index].value)
-      }
-    },
-    [thresholdScalePresets, onThresholdScaleChange]
-  )
+  // Get layer visibility status for current zoom
+  const layerVisibility = getLayerVisibilityStatus(zoom)
 
   const handleZoomIn = useCallback(() => {
     onZoomChange(Math.min(zoom + 0.5, maxZoom))
@@ -89,13 +62,12 @@ export function MapControls({
     [onNodeWidthChange]
   )
 
-  // Reset all settings to default
+  // Reset layout settings to default
   const handleResetSettings = useCallback(() => {
     onNodeSpacingXChange(0)
     onNodeSpacingYChange(0)
     onNodeWidthChange(50)
-    onThresholdScaleChange(DEFAULT_THRESHOLD_SCALE)
-  }, [onNodeSpacingXChange, onNodeSpacingYChange, onNodeWidthChange, onThresholdScaleChange])
+  }, [onNodeSpacingXChange, onNodeSpacingYChange, onNodeWidthChange])
 
   // Convert zoom to percentage for display (zoom=0 → 100%)
   const zoomPercentage = Math.round(Math.pow(2, zoom) * 100)
@@ -230,28 +202,6 @@ export function MapControls({
                 onChange={handleNodeWidthSlider}
                 className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
               />
-            </div>
-
-            <hr className="border-gray-200" />
-
-            {/* Threshold scale */}
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                表示閾値: {currentThresholdLabel}
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={thresholdScalePresets.length - 1}
-                step={1}
-                value={currentPresetIndex >= 0 ? currentPresetIndex : thresholdScalePresets.length - 1}
-                onChange={handleThresholdSlider}
-                className="w-full h-1 appearance-none bg-gray-200 rounded-full cursor-pointer accent-blue-500"
-              />
-              <div className="flex justify-between text-[9px] text-gray-400 mt-0.5">
-                <span>10億</span>
-                <span>1兆</span>
-              </div>
             </div>
 
             <hr className="border-gray-200" />

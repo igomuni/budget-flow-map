@@ -17,25 +17,16 @@ export interface ViewportBounds {
 export interface ZoomVisibilityOptions {
   zoom: number
   viewportBounds: ViewportBounds | null
-  /** Base threshold scale factor (default: 1e12 = 1兆円) */
-  baseThresholdScale?: number
 }
 
 /**
- * Preset threshold scale values (in yen)
- * 10億、50億、100億、500億、1000億、5000億、1兆円
+ * Fixed threshold for visibility filtering (1兆円)
+ *
+ * This value determines which nodes are shown at full size vs minimum size.
+ * Set to 1兆円 based on analysis of Japanese government budget ranges (10 digits).
+ * See: docs/20251230_0030_height-scale-analysis.md
  */
-export const THRESHOLD_SCALE_PRESETS = [
-  { value: 1e9, label: '10億円' },
-  { value: 5e9, label: '50億円' },
-  { value: 1e10, label: '100億円' },
-  { value: 5e10, label: '500億円' },
-  { value: 1e11, label: '1000億円' },
-  { value: 5e11, label: '5000億円' },
-  { value: 1e12, label: '1兆円' },
-] as const
-
-export const DEFAULT_THRESHOLD_SCALE = 1e10 // 100億円
+const VISIBILITY_THRESHOLD = 1e12 // 1兆円
 
 /**
  * Result of zoom-based visibility filtering
@@ -49,30 +40,16 @@ export interface ZoomVisibilityResult {
 
 /**
  * Base amount thresholds at zoom=0 for each layer
- * All layers use the same threshold scale (no multiplier)
  *
  * Layer 0-1 (Ministry, Bureau): Always visible (threshold = 0)
- * Layer 2-4: Use threshold scale directly
+ * Layer 2-4: Use fixed threshold (1兆円)
  */
-const BASE_THRESHOLD_MULTIPLIERS: Record<LayerIndex, number> = {
-  0: 0,     // Ministry: always visible
-  1: 0,     // Bureau: always visible
-  2: 1,     // Division: 1x scale
-  3: 1,     // Project: 1x scale
-  4: 1,     // Recipient: 1x scale
-}
-
-/**
- * Calculate base amount thresholds based on scale
- */
-function getBaseAmountThresholds(scale: number): Record<LayerIndex, number> {
-  return {
-    0: BASE_THRESHOLD_MULTIPLIERS[0] * scale,
-    1: BASE_THRESHOLD_MULTIPLIERS[1] * scale,
-    2: BASE_THRESHOLD_MULTIPLIERS[2] * scale,
-    3: BASE_THRESHOLD_MULTIPLIERS[3] * scale,
-    4: BASE_THRESHOLD_MULTIPLIERS[4] * scale,
-  }
+const BASE_THRESHOLDS: Record<LayerIndex, number> = {
+  0: 0,                    // Ministry: always visible
+  1: 0,                    // Bureau: always visible
+  2: VISIBILITY_THRESHOLD, // Division: 1兆円
+  3: VISIBILITY_THRESHOLD, // Project: 1兆円
+  4: VISIBILITY_THRESHOLD, // Recipient: 1兆円
 }
 
 /**
@@ -88,23 +65,30 @@ const LAYER_X_POSITIONS: Record<LayerIndex, number> = {
 
 const NODE_WIDTH = 50
 const MIN_NODE_HEIGHT = 1 // 閾値以下のノードの最小高さ
-const MIN_VISIBLE_HEIGHT = 5 // 閾値以上のノードの最小高さ（視認性確保）
+const MIN_OTHER_NODE_HEIGHT = 3 // 「その他」ノードの最小高さ（視認性確保）
 const HEIGHT_SCALE = 1e-11 // 1兆円 = 10px
 
 /**
  * Calculate node height from amount
- * Same logic as compute-layout.ts but with configurable threshold
+ * Same logic as compute-layout.ts
+ *
+ * @param amount - 金額（円単位）
+ * @param isOther - 「その他」ノードかどうか
  */
-function amountToHeight(amount: number, threshold: number): number {
-  if (amount <= 0) return MIN_NODE_HEIGHT
+function amountToHeight(amount: number, isOther: boolean = false): number {
+  if (amount <= 0) return isOther ? MIN_OTHER_NODE_HEIGHT : MIN_NODE_HEIGHT
 
-  // 閾値以下は最小高さ
-  if (amount < threshold) {
+  // 「その他」ノードは閾値を無視して金額比例、最小高さも大きめ
+  if (isOther) {
+    return Math.max(MIN_OTHER_NODE_HEIGHT, amount * HEIGHT_SCALE)
+  }
+
+  // 通常ノード: 閾値以下は最小高さ
+  if (amount <= VISIBILITY_THRESHOLD) {
     return MIN_NODE_HEIGHT
   }
 
-  // 閾値以上は金額比例（1兆円 = 10px）、ただし最小視認高さを保証
-  return Math.max(MIN_VISIBLE_HEIGHT, amount * HEIGHT_SCALE)
+  return Math.max(MIN_NODE_HEIGHT, amount * HEIGHT_SCALE)
 }
 
 /**
@@ -114,11 +98,9 @@ function amountToHeight(amount: number, threshold: number): number {
  */
 export function getMinVisibleAmount(
   layer: LayerIndex,
-  zoom: number,
-  scale: number = DEFAULT_THRESHOLD_SCALE
+  zoom: number
 ): number {
-  const baseThresholds = getBaseAmountThresholds(scale)
-  const baseThreshold = baseThresholds[layer]
+  const baseThreshold = BASE_THRESHOLDS[layer]
   if (baseThreshold === 0) return 0
 
   const effectiveZoom = Math.max(0, zoom)
@@ -132,10 +114,9 @@ export function getMinVisibleAmount(
  */
 export function isLayerGenerallyVisible(
   layer: LayerIndex,
-  zoom: number,
-  scale: number = DEFAULT_THRESHOLD_SCALE
+  zoom: number
 ): boolean {
-  const threshold = getMinVisibleAmount(layer, zoom, scale)
+  const threshold = getMinVisibleAmount(layer, zoom)
 
   const typicalMinAmounts: Record<LayerIndex, number> = {
     0: 1e9,
@@ -238,7 +219,7 @@ export function useZoomVisibility(
   data: LayoutData | null,
   options: ZoomVisibilityOptions
 ): ZoomVisibilityResult | null {
-  const { zoom, viewportBounds, baseThresholdScale = DEFAULT_THRESHOLD_SCALE } = options
+  const { zoom, viewportBounds } = options
 
   return useMemo(() => {
     if (!data) return null
@@ -246,7 +227,7 @@ export function useZoomVisibility(
     // Calculate visibility thresholds for each layer
     const thresholds = new Map<LayerIndex, number>()
     for (let layer = 0; layer <= 4; layer++) {
-      thresholds.set(layer as LayerIndex, getMinVisibleAmount(layer as LayerIndex, zoom, baseThresholdScale))
+      thresholds.set(layer as LayerIndex, getMinVisibleAmount(layer as LayerIndex, zoom))
     }
 
     // Group nodes by layer
@@ -330,7 +311,7 @@ export function useZoomVisibility(
           }
 
           // 金額から高さを再計算（閾値以下は最小高さ）
-          const effectiveHeight = amountToHeight(node.amount, threshold)
+          const effectiveHeight = amountToHeight(node.amount)
 
           const repositionedNode: LayoutNode = {
             ...node,
@@ -366,7 +347,7 @@ export function useZoomVisibility(
 
         for (const node of visibleNodes) {
           // 金額から高さを再計算
-          const effectiveHeight = amountToHeight(node.amount, threshold)
+          const effectiveHeight = amountToHeight(node.amount)
 
           const repositionedNode: LayoutNode = {
             ...node,
@@ -383,7 +364,7 @@ export function useZoomVisibility(
         // Create "Other" node if there are hidden nodes
         if (hiddenNodes.length > 0) {
           const totalAmount = hiddenNodes.reduce((sum, n) => sum + n.amount, 0)
-          const height = Math.max(MIN_NODE_HEIGHT, totalAmount / 1e11) // 1兆円 = 10px
+          const height = amountToHeight(totalAmount, true) // isOther = true
 
           const otherNode: LayoutNode = {
             id: `other-layer-${layer}`,
@@ -464,21 +445,20 @@ export function useZoomVisibility(
       nodeCount: finalNodes.length,
       edgeCount: finalEdges.length,
     }
-  }, [data, zoom, viewportBounds, baseThresholdScale])
+  }, [data, zoom, viewportBounds])
 }
 
 /**
  * Get layer visibility status for UI indicator
  */
 export function getLayerVisibilityStatus(
-  zoom: number,
-  scale: number = DEFAULT_THRESHOLD_SCALE
+  zoom: number
 ): Record<LayerIndex, boolean> {
   return {
     0: true,
     1: true,
-    2: isLayerGenerallyVisible(2, zoom, scale),
-    3: isLayerGenerallyVisible(3, zoom, scale),
-    4: isLayerGenerallyVisible(4, zoom, scale),
+    2: isLayerGenerallyVisible(2, zoom),
+    3: isLayerGenerallyVisible(3, zoom),
+    4: isLayerGenerallyVisible(4, zoom),
   }
 }
