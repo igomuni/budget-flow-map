@@ -70,12 +70,12 @@ const HEIGHT_SCALE = 1e-11 // 1兆円 = 10px
 
 /**
  * Calculate node height from amount
- * Same logic as compute-layout.ts
  *
  * @param amount - 金額（円単位）
+ * @param threshold - 動的閾値（この値以上のノードが表示される）
  * @param isOther - 「その他」ノードかどうか
  */
-function amountToHeight(amount: number, isOther: boolean = false): number {
+function amountToHeight(amount: number, threshold: number, isOther: boolean = false): number {
   if (amount <= 0) return isOther ? MIN_OTHER_NODE_HEIGHT : MIN_NODE_HEIGHT
 
   // 「その他」ノードは閾値を無視して金額比例、最小高さも大きめ
@@ -84,10 +84,11 @@ function amountToHeight(amount: number, isOther: boolean = false): number {
   }
 
   // 通常ノード: 閾値以下は最小高さ
-  if (amount <= VISIBILITY_THRESHOLD) {
+  if (amount < threshold) {
     return MIN_NODE_HEIGHT
   }
 
+  // 閾値以上は金額比例（1兆円 = 10px）
   return Math.max(MIN_NODE_HEIGHT, amount * HEIGHT_SCALE)
 }
 
@@ -311,7 +312,7 @@ export function useZoomVisibility(
           }
 
           // 金額から高さを再計算（閾値以下は最小高さ）
-          const effectiveHeight = amountToHeight(node.amount)
+          const effectiveHeight = amountToHeight(node.amount, threshold)
 
           const repositionedNode: LayoutNode = {
             ...node,
@@ -347,7 +348,7 @@ export function useZoomVisibility(
 
         for (const node of visibleNodes) {
           // 金額から高さを再計算
-          const effectiveHeight = amountToHeight(node.amount)
+          const effectiveHeight = amountToHeight(node.amount, threshold)
 
           const repositionedNode: LayoutNode = {
             ...node,
@@ -364,7 +365,7 @@ export function useZoomVisibility(
         // Create "Other" node if there are hidden nodes
         if (hiddenNodes.length > 0) {
           const totalAmount = hiddenNodes.reduce((sum, n) => sum + n.amount, 0)
-          const height = amountToHeight(totalAmount, true) // isOther = true
+          const height = amountToHeight(totalAmount, threshold, true) // isOther = true
 
           const otherNode: LayoutNode = {
             id: `other-layer-${layer}`,

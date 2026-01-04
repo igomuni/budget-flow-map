@@ -27,11 +27,19 @@
 
 ```typescript
 const HEIGHT_SCALE = 1e-11 // 1兆円 = 10px
-const VISIBILITY_THRESHOLD = 1e12 // 1兆円（固定）
 const MIN_NODE_HEIGHT = 1 // 閾値以下のノード
 const MIN_OTHER_NODE_HEIGHT = 3 // 「その他」ノードの最小高さ
 
-function amountToHeight(amount: number, isOther: boolean = false): number {
+// 動的閾値: ズームレベルに応じて変化
+// zoom=0 → 1兆円、zoom=1 → 2500億円、zoom=2 → 625億円...
+function getMinVisibleAmount(layer: LayerIndex, zoom: number): number {
+  const baseThreshold = 1e12 // 1兆円
+  const effectiveZoom = Math.max(0, zoom)
+  const reductionFactor = Math.pow(4, effectiveZoom)
+  return baseThreshold / reductionFactor
+}
+
+function amountToHeight(amount: number, threshold: number, isOther: boolean = false): number {
   if (amount <= 0) return isOther ? MIN_OTHER_NODE_HEIGHT : MIN_NODE_HEIGHT
 
   // 「その他」ノードは閾値を無視して金額比例
@@ -40,24 +48,35 @@ function amountToHeight(amount: number, isOther: boolean = false): number {
   }
 
   // 通常ノード: 閾値以下は最小高さ
-  if (amount <= VISIBILITY_THRESHOLD) {
+  if (amount < threshold) {
     return MIN_NODE_HEIGHT
   }
 
+  // 閾値以上は金額比例（1兆円 = 10px）
   return Math.max(MIN_NODE_HEIGHT, amount * HEIGHT_SCALE)
 }
 ```
 
-### 高さ計算例（固定閾値1兆円）
+### 動的閾値の計算例
 
-| 金額 | 計算式 | 高さ |
-|------|--------|------|
-| 100億円 | 閾値以下 | 1px |
+| ズーム | 閾値 | 説明 |
+|--------|------|------|
+| 100% (zoom=0) | 1兆円 | 初期表示 |
+| 146% (zoom≈0.55) | 約4691億円 | ズームイン |
+| 200% (zoom=1) | 2500億円 | さらにズームイン |
+| 400% (zoom=2) | 625億円 | 詳細表示 |
+
+### 高さ計算例（zoom=0.55、閾値≈4691億円の場合）
+
+| 金額 | 閾値比較 | 高さ |
+|------|----------|------|
 | 1000億円 | 閾値以下 | 1px |
-| 1兆円 | max(1, 1兆 × 1e-11) | 10px |
-| 10兆円 | max(1, 10兆 × 1e-11) | 100px |
-| 93兆円（厚労省） | max(1, 93兆 × 1e-11) | 930px |
-| 150兆円（全体合計） | max(1, 150兆 × 1e-11) | 1500px |
+| 4691億円 | 閾値ちょうど | 4.7px |
+| 8276億円（埼玉県） | 閾値超え | 8.3px |
+| 1.14兆円（児童手当） | 閾値超え | 11.5px |
+
+**重要**: 表示されるノード（閾値超え）は金額に比例した高さになる。
+上記例では埼玉県と児童手当の高さ比率（1.39倍）は金額比率と一致する。
 
 ### なぜ1兆円=10pxが適切か
 
@@ -69,8 +88,9 @@ function amountToHeight(amount: number, isOther: boolean = false): number {
    - 財務省（35兆円）→ 350px
    - 総務省（20兆円）→ 200px
 
-3. **メンタルマップが安定する**
-   - 固定スケールにより、同じノードが常に同じサイズで表示される
+3. **表示ノードの金額比較が直感的**
+   - 動的閾値により、表示されるノードは金額比例の高さを持つ
+   - ズームインするほど小さな金額差も視覚的に区別可能
 
 ## 設計上の考察
 
@@ -132,10 +152,11 @@ const scale = 1e-11 / Math.pow(2, zoom)
 
 ## 最終設定
 
-- **閾値**: 1兆円（固定、UI設定なし）
+- **基準閾値**: 1兆円（zoom=0時、ズームに応じて動的に減少）
 - **高さスケール**: 1兆円 = 10px
 - **閾値以下ノード高さ**: 1px
 - **「その他」ノード最小高さ**: 3px
+- **表示ノードの高さ**: 金額に比例（動的閾値を使用）
 
 ## 関連ファイル
 
