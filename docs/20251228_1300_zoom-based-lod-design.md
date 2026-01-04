@@ -1,7 +1,8 @@
 # ズーム連動LOD（Level of Detail）設計
 
 作成日: 2025-12-28
-ステータス: 設計中
+最終更新: 2026-01-04
+ステータス: 基本実装完了
 
 ## 1. 概要
 
@@ -152,23 +153,39 @@ const threshold = 1e11 * Math.pow(10, -zoom)
 
 ## 6. 段階的実装計画
 
-### Phase 1: 基盤
+### Phase 1: 基盤 ✅ 完了
 
-- [ ] `useDynamicLOD` フック作成
-- [ ] 閾値ベース集約ロジック実装
-- [ ] TopN設定UIを閾値設定UIに置換
+- [x] `useZoomVisibility` フック作成（`useDynamicLOD`から改名）
+  - ファイル: `src/hooks/useZoomVisibility.ts`
+- [x] 閾値ベース集約ロジック実装
+  - `amountToHeight()`: 金額から高さを計算
+  - `getMinVisibleAmount()`: ズームから閾値を計算
+- [x] TopN設定UIを廃止、固定閾値（1兆円）に統一
+  - 詳細: [20251230_0030_height-scale-analysis.md](./20251230_0030_height-scale-analysis.md)
 
-### Phase 2: ズーム連動
+### Phase 2: ズーム連動 ✅ 完了
 
-- [ ] ズームレベルから閾値を計算するロジック
-- [ ] デバウンスによるパフォーマンス最適化
-- [ ] メモ化による再計算抑制
+- [x] ズームレベルから閾値を計算するロジック
+  - 公式: `threshold = 1兆円 / 4^zoom`
+  - zoom=0: 1兆円、zoom=2: 625億円、zoom=4: 39億円...
+- [x] メモ化による再計算抑制（useMemo使用）
+- [x] レイヤー別の集約ルール
+  - Layer 0-2（府省・局・課）: 集約なし、閾値以下は最小高さ（1px）
+  - Layer 3-4（事業・支出先）: 閾値以下を「その他」に集約
 
-### Phase 3: 視覚的改善
+### Phase 3: 視覚的改善 🚧 一部完了
 
-- [ ] 「その他」ノードのスタイル差別化
-- [ ] 集約/展開アニメーション
-- [ ] 位置の連続性保持
+- [x] 「その他」ノードのスタイル差別化
+  - 最小高さ3px（通常ノードは1px）
+  - 件数表示「その他（N件）」
+- [ ] 集約/展開アニメーション → 未実装
+- [ ] 位置の連続性保持 → 現状は全体レイアウト再計算
+
+### Phase 4: maxZoom拡大 🚧 次のアクション
+
+- [ ] maxZoomを6→8または9に拡大
+- [ ] パフォーマンステスト
+- 根拠: [20260104_recipient-distribution-analysis.md](./20260104_recipient-distribution-analysis.md)
 
 ---
 
@@ -206,3 +223,35 @@ LOD方式でも同様に、ビルド時に全ノードの位置を計算し、
 - [displayed-nodes-20251228T033538.json](../data/analysis/displayed-nodes-20251228T033538.json) - 基準データ
 - [spec.ja.md](./spec.ja.md) - 仕様書
 - [20251226_0730_roadmap.md](./20251226_0730_roadmap.md) - ロードマップ
+- [20251230_0030_height-scale-analysis.md](./20251230_0030_height-scale-analysis.md) - 高さスケール分析
+- [20260104_recipient-distribution-analysis.md](./20260104_recipient-distribution-analysis.md) - 金額分布分析
+- [20260104_budget-scale-visualization.md](./20260104_budget-scale-visualization.md) - スケール可視化限界
+- [20260104_data-aggregation-issue.md](./20260104_data-aggregation-issue.md) - 集約による情報損失
+
+---
+
+## 10. 実装済みコード
+
+### useZoomVisibility.ts（抜粋）
+
+```typescript
+const VISIBILITY_THRESHOLD = 1e12 // 1兆円
+const HEIGHT_SCALE = 1e-11 // 1兆円 = 10px
+const MIN_NODE_HEIGHT = 1
+const MIN_OTHER_NODE_HEIGHT = 3
+
+function getMinVisibleAmount(layer: LayerIndex, zoom: number): number {
+  const baseThreshold = BASE_THRESHOLDS[layer]
+  if (baseThreshold === 0) return 0
+  const effectiveZoom = Math.max(0, zoom)
+  const reductionFactor = Math.pow(4, effectiveZoom)
+  return baseThreshold / reductionFactor
+}
+
+function amountToHeight(amount: number, threshold: number, isOther: boolean = false): number {
+  if (amount <= 0) return isOther ? MIN_OTHER_NODE_HEIGHT : MIN_NODE_HEIGHT
+  if (isOther) return Math.max(MIN_OTHER_NODE_HEIGHT, amount * HEIGHT_SCALE)
+  if (amount < threshold) return MIN_NODE_HEIGHT
+  return Math.max(MIN_NODE_HEIGHT, amount * HEIGHT_SCALE)
+}
+```
