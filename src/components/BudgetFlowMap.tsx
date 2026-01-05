@@ -82,7 +82,7 @@ export function BudgetFlowMap() {
         target: [newX, newY] as [number, number],
         zoom: newZoom,
         minZoom: -13,
-        maxZoom: 6,
+        maxZoom: 8,
       }
 
       setViewState(newViewState)
@@ -128,7 +128,7 @@ export function BudgetFlowMap() {
       target: [x, y] as [number, number],
       zoom: currentZoom,
       minZoom: -13,
-      maxZoom: 6,
+      maxZoom: 8,
     }
     setViewState(newViewState)
     viewStateRef.current = newViewState
@@ -410,7 +410,7 @@ export function BudgetFlowMap() {
     target: [(scaledData.bounds.minX + scaledData.bounds.maxX) / 2, (scaledData.bounds.minY + scaledData.bounds.maxY) / 2],
     zoom: -4,
     minZoom: -13,
-    maxZoom: 6,
+    maxZoom: 8,
   }
 
   const effectiveViewState = viewState || initialViewState
@@ -451,7 +451,7 @@ export function BudgetFlowMap() {
         <MapControls
           zoom={currentZoom}
           minZoom={-13}
-          maxZoom={6}
+          maxZoom={8}
           onZoomChange={handleZoomChange}
           nodeSpacingX={nodeSpacingX}
           nodeSpacingY={nodeSpacingY}

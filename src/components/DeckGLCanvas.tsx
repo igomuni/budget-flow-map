@@ -42,7 +42,7 @@ export function DeckGLCanvas({
       target: [centerX, centerY],
       zoom: -4, // Zoomed out to see full canvas
       minZoom: -13, // Allow 100x more zoom out
-      maxZoom: 6,
+      maxZoom: 8, // zoom=8で閾値≈1500万円、カバー率≈50%
     }
   }, [layoutData])
 
