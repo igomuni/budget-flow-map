@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { LayoutData, LayoutNode, LayoutEdge, LayerIndex } from '@/types/layout'
+import { generateSankeyPath } from '@/utils/sankeyPath'
 
 /**
  * Viewport bounds for culling
@@ -248,7 +249,7 @@ export function useZoomVisibility(
     // Process each layer: separate visible and hidden nodes, recalculate Y positions
     const visibleNodeIds = new Set<string>()
     const repositionedNodes: LayoutNode[] = []
-    const newNodePositions = new Map<string, { x: number; y: number }>()
+    const newNodePositions = new Map<string, { x: number; y: number; height: number }>()
 
     // Debug counts
     const visibleByLayer = new Map<number, number>()
@@ -322,7 +323,7 @@ export function useZoomVisibility(
           }
           repositionedNodes.push(repositionedNode)
           visibleNodeIds.add(node.id)
-          newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y })
+          newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y, height: effectiveHeight })
 
           currentY += effectiveHeight
         }
@@ -357,7 +358,7 @@ export function useZoomVisibility(
             height: effectiveHeight,
           }
           repositionedNodes.push(repositionedNode)
-          newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y })
+          newNodePositions.set(node.id, { x: repositionedNode.x, y: repositionedNode.y, height: effectiveHeight })
 
           currentY += effectiveHeight
         }
@@ -386,7 +387,7 @@ export function useZoomVisibility(
           }
           repositionedNodes.push(otherNode)
           visibleNodeIds.add(otherNode.id)
-          newNodePositions.set(otherNode.id, { x: otherNode.x, y: otherNode.y })
+          newNodePositions.set(otherNode.id, { x: otherNode.x, y: otherNode.y, height })
         }
       }
     }
@@ -395,9 +396,20 @@ export function useZoomVisibility(
     console.log(`[ZoomVisibility] visible by layer:`, Object.fromEntries(visibleByLayer))
     console.log(`[ZoomVisibility] hidden by layer:`, Object.fromEntries(hiddenByLayer))
 
-    // Filter and reposition edges
-    // Both endpoints must be visible, and we need to update path coordinates
-    const visibleEdges: LayoutEdge[] = []
+    // Filter and reposition edges with stacked Y positions
+    // Track current Y offset for each node's outgoing and incoming edges
+    const sourceYOffsets = new Map<string, number>() // Current Y offset for outgoing edges
+    const targetYOffsets = new Map<string, number>() // Current Y offset for incoming edges
+
+    // Initialize offsets to node's top edge (y - height/2)
+    for (const [nodeId, pos] of newNodePositions) {
+      sourceYOffsets.set(nodeId, pos.y - pos.height / 2)
+      targetYOffsets.set(nodeId, pos.y - pos.height / 2)
+    }
+
+    // First pass: collect valid edges and sort by value (descending) for consistent ordering
+    const validEdges: Array<{ edge: LayoutEdge; sourcePos: { x: number; y: number; height: number }; targetPos: { x: number; y: number; height: number } }> = []
+
     for (const edge of data.edges) {
       if (visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)) {
         // Skip edges involving "Other" nodes
@@ -409,19 +421,43 @@ export function useZoomVisibility(
         const targetPos = newNodePositions.get(edge.targetId)
 
         if (sourcePos && targetPos) {
-          // Recalculate edge path with new node positions
-          // Simple straight line for now (Bezier would need more work)
-          const newPath: [number, number][] = [
-            [sourcePos.x + NODE_WIDTH / 2, sourcePos.y],
-            [targetPos.x - NODE_WIDTH / 2, targetPos.y],
-          ]
-
-          visibleEdges.push({
-            ...edge,
-            path: newPath,
-          })
+          validEdges.push({ edge, sourcePos, targetPos })
         }
       }
+    }
+
+    // Sort edges by value (descending) for consistent stacking order
+    validEdges.sort((a, b) => b.edge.value - a.edge.value)
+
+    // Second pass: generate edges with stacked Y positions
+    const visibleEdges: LayoutEdge[] = []
+
+    for (const { edge, sourcePos, targetPos } of validEdges) {
+      // Calculate edge width based on edge value (same scale as node height)
+      // This ensures edges properly represent the flow amount
+      const edgeWidth = Math.max(MIN_NODE_HEIGHT, edge.value * HEIGHT_SCALE)
+
+      // Get current Y offsets and calculate center position for this edge
+      const sourceYOffset = sourceYOffsets.get(edge.sourceId)!
+      const targetYOffset = targetYOffsets.get(edge.targetId)!
+
+      const sourceY = sourceYOffset + edgeWidth / 2
+      const targetY = targetYOffset + edgeWidth / 2
+
+      // Update offsets for next edge
+      sourceYOffsets.set(edge.sourceId, sourceYOffset + edgeWidth)
+      targetYOffsets.set(edge.targetId, targetYOffset + edgeWidth)
+
+      // Generate Bezier curve path with stacked Y positions
+      const sourceX = sourcePos.x + NODE_WIDTH / 2
+      const targetX = targetPos.x - NODE_WIDTH / 2
+      const newPath = generateSankeyPath(sourceX, sourceY, targetX, targetY)
+
+      visibleEdges.push({
+        ...edge,
+        path: newPath,
+        width: edgeWidth,
+      })
     }
 
     // Apply viewport culling if bounds provided
