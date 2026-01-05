@@ -9,10 +9,11 @@ RSシステム（行政事業レビュー）のCSVデータを元に、5層のSa
 
 **「詳細分析」ではなく「全体構造の理解」が目的**
 
-- TopN表示は禁止（全ノードを個別に描画）
+- **TopN禁止** — ノード数による切り捨てを行わない。代わりに閾値ベースの集約を使用
 - ドリルダウンは禁止（クリックでビューは変わらない）
 - Google Mapsのようにズーム・パン操作で探索
 - 「操作して理解する」ではなく「眺めて慣れることで理解する」
+- **メンタルマップ保持** — ズーム時にノードが突然消えたり現れたりしない
 
 ## 技術スタック
 
@@ -37,11 +38,11 @@ Layer0   Layer1  Layer2  Layer3   Layer4
 src/
 ├── components/          # Reactコンポーネント
 │   ├── App.tsx
-│   ├── BudgetFlowMap.tsx   # メインコンテナ（TopN/間隔設定管理）
+│   ├── BudgetFlowMap.tsx   # メインコンテナ（閾値/間隔設定管理）
 │   ├── DeckGLCanvas.tsx    # deck.glレンダリング（ハイライト計算含む）
 │   ├── Minimap.tsx         # 右側ミニマップ
 │   ├── MapControls.tsx     # ズーム・間隔コントロール
-│   ├── TopNSettings.tsx    # TopN設定パネル
+│   ├── TopNSettings.tsx    # TopN設定パネル（廃止予定 → 閾値設定に移行）
 │   ├── InfoPanel/          # 左パネル（タブ切替式）
 │   └── Tooltip.tsx
 ├── layers/              # deck.glレイヤー生成
@@ -49,7 +50,7 @@ src/
 │   └── createEdgeLayers.ts   # PathLayerでエッジ描画
 ├── hooks/               # カスタムフック
 │   ├── useLayoutData.ts      # layout.json.gzの読み込み
-│   └── useDynamicTopN.ts     # 動的TopNフィルタリング
+│   └── useDynamicTopN.ts     # 動的TopNフィルタリング（廃止予定 → useDynamicLODに移行）
 ├── store/               # Zustandストア
 ├── types/               # TypeScript型定義
 └── utils/               # ユーティリティ
@@ -209,14 +210,18 @@ docs/YYYYMMDD_HHMM_タイトル.md
   - ハイライト: 70%（鮮やかな青 #5090ff）
   - 非関連: 15%
 
-## 動的TopNフィルタリング
+## ズーム連動閾値集約（設計中）
 
-全データ（32,609ノード）をロードし、クライアント側で動的にフィルタリング:
-- 事業（Layer 3）: デフォルト Top 500
-- 支出先（Layer 4）: デフォルト Top 1000
-- 閾値: 最小高さ適用の基準（デフォルト 1兆円）
+**TopNフィルタリングは廃止予定**。代わりに閾値ベースの集約を採用する。
 
-フィルタリング外のノードは「その他」として集約される。
+- すべてのノード情報をロード（3万超）
+- クライアント側でズームレベルに応じて動的に集約:
+  - ズームアウト時: 高い閾値 → 大きなノードのみ表示
+  - ズームイン時: 低い閾値 → 詳細なノードまで表示
+- 閾値未満のノードは親単位で「その他」として集約
+- メンタルマップ保持: 集約・展開時にノードが消えずに統合/分離
+
+詳細: `docs/20251228_1300_zoom-based-lod-design.md`
 
 ## レイアウトアルゴリズム
 

@@ -5,21 +5,20 @@ import type { PickingInfo, OrthographicViewState } from '@deck.gl/core'
 import { useStore } from '@/store'
 import { createNodeLayers } from '@/layers/createNodeLayers'
 import { createEdgeLayers } from '@/layers/createEdgeLayers'
-import { calculateViewportBounds, cullNodes, cullEdges } from '@/utils/viewportCulling'
-import type { LayoutData, LayoutNode } from '@/types/layout'
-
-// Default viewport size (will be updated on resize)
-const DEFAULT_VIEWPORT_WIDTH = 1920
-const DEFAULT_VIEWPORT_HEIGHT = 1080
+import type { LayoutData, LayoutNode, LayoutEdge } from '@/types/layout'
 
 interface DeckGLCanvasProps {
-  layoutData: LayoutData
+  layoutData: LayoutData // 元データ（エッジ接続情報用）
+  visibleNodes: LayoutNode[] // フィルタリング済みノード
+  visibleEdges: LayoutEdge[] // フィルタリング済みエッジ
   onViewStateChange?: (viewState: OrthographicViewState) => void
   externalViewState?: OrthographicViewState | null
 }
 
 export function DeckGLCanvas({
   layoutData,
+  visibleNodes,
+  visibleEdges,
   onViewStateChange,
   externalViewState,
 }: DeckGLCanvasProps) {
@@ -30,25 +29,8 @@ export function DeckGLCanvas({
   const showTooltip = useStore((state) => state.showTooltip)
   const hideTooltip = useStore((state) => state.hideTooltip)
 
-  // Track container size for viewport culling
+  // Ref for container
   const containerRef = useRef<HTMLDivElement>(null)
-  const [containerSize, setContainerSize] = useState({ width: DEFAULT_VIEWPORT_WIDTH, height: DEFAULT_VIEWPORT_HEIGHT })
-
-  // Update container size on resize
-  useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerSize({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        })
-      }
-    }
-
-    updateSize()
-    window.addEventListener('resize', updateSize)
-    return () => window.removeEventListener('resize', updateSize)
-  }, [])
 
   // Initialize view state centered on bounds with appropriate zoom
   const initialViewState = useMemo((): OrthographicViewState => {
@@ -60,7 +42,7 @@ export function DeckGLCanvas({
       target: [centerX, centerY],
       zoom: -4, // Zoomed out to see full canvas
       minZoom: -13, // Allow 100x more zoom out
-      maxZoom: 6,
+      maxZoom: 8, // zoom=8で閾値≈1500万円、カバー率≈50%
     }
   }, [layoutData])
 
@@ -99,6 +81,7 @@ export function DeckGLCanvas({
   // Create connected edges and nodes lookup for highlighting
   // Both hover and selection: show all ancestors and descendants (BFS traversal)
   // Combine highlights from both selected and hovered nodes
+  // Use visibleEdges (which includes aggregated edges) instead of layoutData.edges
   const { connectedEdges, connectedNodeIds } = useMemo(() => {
     const activeIds: string[] = []
     if (selectedNodeId) activeIds.push(selectedNodeId)
@@ -115,11 +98,11 @@ export function DeckGLCanvas({
     }
 
     // Show all ancestors and descendants (BFS traversal)
-    // Build adjacency maps for traversal
+    // Build adjacency maps for traversal using visibleEdges (includes aggregated edges)
     const sourceToTargets = new Map<string, string[]>()
     const targetToSources = new Map<string, string[]>()
 
-    for (const edge of layoutData.edges) {
+    for (const edge of visibleEdges) {
       // Forward edges (source -> target)
       if (!sourceToTargets.has(edge.sourceId)) {
         sourceToTargets.set(edge.sourceId, [])
@@ -133,7 +116,11 @@ export function DeckGLCanvas({
       targetToSources.get(edge.targetId)!.push(edge.sourceId)
     }
 
+    // Helper to check if a node is an "Other" aggregate node
+    const isOtherNode = (nodeId: string) => nodeId.startsWith('other-layer-')
+
     // BFS to find all descendants (downstream) from all active nodes
+    // Stop traversal at "Other" nodes (1-hop limit for aggregate nodes)
     const descendantsQueue = [...activeIds]
     const visitedDescendants = new Set<string>(activeIds)
 
@@ -145,12 +132,16 @@ export function DeckGLCanvas({
         if (!visitedDescendants.has(targetId)) {
           visitedDescendants.add(targetId)
           nodeIds.add(targetId)
-          descendantsQueue.push(targetId)
+          // Don't continue BFS from "Other" nodes (1-hop limit)
+          if (!isOtherNode(targetId)) {
+            descendantsQueue.push(targetId)
+          }
         }
       }
     }
 
     // BFS to find all ancestors (upstream) from all active nodes
+    // Stop traversal at "Other" nodes (1-hop limit for aggregate nodes)
     const ancestorsQueue = [...activeIds]
     const visitedAncestors = new Set<string>(activeIds)
 
@@ -162,52 +153,25 @@ export function DeckGLCanvas({
         if (!visitedAncestors.has(sourceId)) {
           visitedAncestors.add(sourceId)
           nodeIds.add(sourceId)
-          ancestorsQueue.push(sourceId)
+          // Don't continue BFS from "Other" nodes (1-hop limit)
+          if (!isOtherNode(sourceId)) {
+            ancestorsQueue.push(sourceId)
+          }
         }
       }
     }
 
-    // Collect all edges connecting the found nodes
-    for (const edge of layoutData.edges) {
+    // Collect all edges connecting the found nodes (using visibleEdges)
+    for (const edge of visibleEdges) {
       if (nodeIds.has(edge.sourceId) && nodeIds.has(edge.targetId)) {
         edges.add(edge.id)
       }
     }
 
     return { connectedEdges: edges, connectedNodeIds: nodeIds }
-  }, [layoutData.edges, hoveredNodeId, selectedNodeId])
+  }, [visibleEdges, hoveredNodeId, selectedNodeId])
 
-  // Debounced viewport state for culling (only update when user stops interacting)
-  const [debouncedViewState, setDebouncedViewState] = useState(viewState)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedViewState(viewState)
-    }, 100) // 100ms debounce
-
-    return () => clearTimeout(timer)
-  }, [viewState])
-
-  // Calculate viewport bounds and cull nodes/edges (using debounced state)
-  const { visibleNodes, visibleEdges } = useMemo(() => {
-    const target = debouncedViewState.target as [number, number]
-    const zoom = debouncedViewState.zoom ?? 0
-
-    const bounds = calculateViewportBounds(
-      target,
-      zoom,
-      containerSize.width,
-      containerSize.height,
-      0.5 // 50% padding for smooth transitions during interaction
-    )
-
-    return {
-      visibleNodes: cullNodes(layoutData.nodes, bounds),
-      visibleEdges: cullEdges(layoutData.edges, bounds),
-    }
-  }, [layoutData.nodes, layoutData.edges, debouncedViewState.target, debouncedViewState.zoom, containerSize])
-
-  // Create layers with culled data
+  // Create layers with passed visible nodes/edges
   const layers = useMemo(() => {
     return [
       // Edges behind nodes

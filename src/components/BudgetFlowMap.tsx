@@ -1,7 +1,16 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
+import type { LayoutData, LayoutNode } from '@/types/layout'
+
+// Debug用: 実際に表示されているデータをwindowに公開
+declare global {
+  interface Window {
+    __BUDGET_FLOW_MAP_DATA__: LayoutData | null
+    exportDisplayedNodes: () => void
+  }
+}
 import type { OrthographicViewState } from '@deck.gl/core'
 import { useLayoutData } from '@/hooks/useLayoutData'
-import { useDynamicTopN } from '@/hooks/useDynamicTopN'
+import { useZoomVisibility } from '@/hooks/useZoomVisibility'
 import { useStore } from '@/store'
 import { DeckGLCanvas } from './DeckGLCanvas'
 import { Minimap } from './Minimap'
@@ -9,7 +18,6 @@ import { MapControls } from './MapControls'
 import { SidePanel } from './SidePanel'
 import { generateSankeyPath } from '@/utils/sankeyPath'
 import { getNodeIdFromUrl, updateUrlWithNodeId } from '@/utils/urlState'
-import type { LayoutData, LayoutNode } from '@/types/layout'
 
 export function BudgetFlowMap() {
   const { data: rawData, loading, error } = useLayoutData()
@@ -17,9 +25,6 @@ export function BudgetFlowMap() {
   const [nodeSpacingX, setNodeSpacingX] = useState(0) // px単位
   const [nodeSpacingY, setNodeSpacingY] = useState(0) // px単位
   const [nodeWidth, setNodeWidth] = useState(50) // px単位
-  const [topProjects, setTopProjects] = useState(500)
-  const [topRecipients, setTopRecipients] = useState(1000)
-  const [threshold, setThreshold] = useState(1e12) // 1兆円 = 1,000,000,000,000円
 
   // Zustand store for selection state
   const selectedNodeId = useStore((state) => state.selectedNodeId)
@@ -44,8 +49,8 @@ export function BudgetFlowMap() {
     }
   }, [])
 
-  // 動的TopNフィルタリングを適用
-  const data = useDynamicTopN(rawData, { topProjects, topRecipients, threshold })
+  // rawDataをそのまま使用（ズームベースの可視性はDeckGLCanvasで処理）
+  const data = rawData
 
   // Animate to target position with easing (GoogleMap風)
   const animateTo = useCallback((targetX: number, targetY: number, targetZoom: number, duration: number = 500) => {
@@ -77,7 +82,7 @@ export function BudgetFlowMap() {
         target: [newX, newY] as [number, number],
         zoom: newZoom,
         minZoom: -13,
-        maxZoom: 6,
+        maxZoom: 8,
       }
 
       setViewState(newViewState)
@@ -123,7 +128,7 @@ export function BudgetFlowMap() {
       target: [x, y] as [number, number],
       zoom: currentZoom,
       minZoom: -13,
-      maxZoom: 6,
+      maxZoom: 8,
     }
     setViewState(newViewState)
     viewStateRef.current = newViewState
@@ -214,17 +219,120 @@ export function BudgetFlowMap() {
     }
   }, [data, nodeSpacingX, nodeSpacingY, nodeWidth])
 
-  // Handle fit to screen - calculate zoom to fit entire bounds
-  const handleFitToScreen = useCallback(() => {
-    if (!scaledData) return
+  // ズームベースのフィルタリング（ビューポートカリングなし）
+  // 注: フックは常に同じ順序で呼び出す必要があるため、早期リターンの前に配置
+  const currentZoomForVisibility = typeof viewState?.zoom === 'number' ? viewState.zoom : -4
+  const zoomVisibility = useZoomVisibility(scaledData, {
+    zoom: currentZoomForVisibility,
+    viewportBounds: null, // 全体を表示するのでビューポートカリングなし
+  })
 
-    // Calculate center of bounds
-    const centerX = (scaledData.bounds.minX + scaledData.bounds.maxX) / 2
-    const centerY = (scaledData.bounds.minY + scaledData.bounds.maxY) / 2
+  // フィルタリング後のレイアウトデータを生成（ミニマップとFitToScreenで使用）
+  const filteredLayoutData = useMemo((): LayoutData | null => {
+    if (!scaledData || !zoomVisibility) return null
+
+    // バウンディングボックスを再計算
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+    for (const node of zoomVisibility.visibleNodes) {
+      minX = Math.min(minX, node.x - node.width / 2)
+      maxX = Math.max(maxX, node.x + node.width / 2)
+      minY = Math.min(minY, node.y - node.height / 2)
+      maxY = Math.max(maxY, node.y + node.height / 2)
+    }
+
+    return {
+      ...scaledData,
+      nodes: zoomVisibility.visibleNodes,
+      edges: zoomVisibility.visibleEdges,
+      bounds: {
+        minX: Math.floor(minX),
+        maxX: Math.ceil(maxX),
+        minY: Math.floor(minY),
+        maxY: Math.ceil(maxY),
+      },
+    }
+  }, [scaledData, zoomVisibility])
+
+  // Debug用: 表示中のデータをwindowに公開
+  useEffect(() => {
+    window.__BUDGET_FLOW_MAP_DATA__ = scaledData
+
+    // コンソールからノード情報をダウンロードする関数
+    window.exportDisplayedNodes = () => {
+      if (!scaledData) {
+        console.log('No data available')
+        return
+      }
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        settings: {
+          nodeSpacingX,
+          nodeSpacingY,
+          nodeWidth,
+        },
+        metadata: scaledData.metadata,
+        bounds: scaledData.bounds,
+        summary: {
+          totalNodes: scaledData.nodes.length,
+          totalEdges: scaledData.edges.length,
+          byLayer: [0, 1, 2, 3, 4].map(layer => ({
+            layer,
+            count: scaledData.nodes.filter(n => n.layer === layer).length,
+            totalHeight: scaledData.nodes
+              .filter(n => n.layer === layer)
+              .reduce((sum, n) => sum + n.height, 0),
+          })),
+        },
+        nodes: scaledData.nodes.map(n => ({
+          id: n.id,
+          name: n.name,
+          type: n.type,
+          layer: n.layer,
+          amount: n.amount,
+          amountTrillion: n.amount / 1e12,
+          ministryId: n.ministryId,
+          x: n.x,
+          y: n.y,
+          width: n.width,
+          height: n.height,
+          isOther: !!n.metadata?.isOther,
+          aggregatedCount: n.metadata?.aggregatedCount,
+        })),
+      }
+
+      // JSONをダウンロード
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `displayed-nodes-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+
+      console.log('Exported', exportData.summary.totalNodes, 'nodes')
+      console.log('By layer:', exportData.summary.byLayer)
+    }
+
+    console.log('[Debug] Displayed data available at window.__BUDGET_FLOW_MAP_DATA__')
+    console.log('[Debug] Run window.exportDisplayedNodes() to download node info')
+
+    return () => {
+      window.__BUDGET_FLOW_MAP_DATA__ = null
+    }
+  }, [scaledData, nodeSpacingX, nodeSpacingY, nodeWidth])
+
+  // Handle fit to screen - calculate zoom to fit filtered bounds
+  const handleFitToScreen = useCallback(() => {
+    if (!filteredLayoutData) return
+
+    // Calculate center of filtered bounds
+    const centerX = (filteredLayoutData.bounds.minX + filteredLayoutData.bounds.maxX) / 2
+    const centerY = (filteredLayoutData.bounds.minY + filteredLayoutData.bounds.maxY) / 2
 
     // Calculate bounds size
-    const boundsWidth = scaledData.bounds.maxX - scaledData.bounds.minX
-    const boundsHeight = scaledData.bounds.maxY - scaledData.bounds.minY
+    const boundsWidth = filteredLayoutData.bounds.maxX - filteredLayoutData.bounds.minX
+    const boundsHeight = filteredLayoutData.bounds.maxY - filteredLayoutData.bounds.minY
 
     // Use actual window size (accounting for minimap width)
     const MINIMAP_WIDTH = 120
@@ -239,7 +347,7 @@ export function BudgetFlowMap() {
 
     // Animate to fit position
     animateTo(centerX, centerY, fitZoom, 800)
-  }, [scaledData, animateTo])
+  }, [filteredLayoutData, animateTo])
 
   // Initial load: select node from URL or fit to screen
   useEffect(() => {
@@ -302,7 +410,7 @@ export function BudgetFlowMap() {
     target: [(scaledData.bounds.minX + scaledData.bounds.maxX) / 2, (scaledData.bounds.minY + scaledData.bounds.maxY) / 2],
     zoom: -4,
     minZoom: -13,
-    maxZoom: 6,
+    maxZoom: 8,
   }
 
   const effectiveViewState = viewState || initialViewState
@@ -324,23 +432,26 @@ export function BudgetFlowMap() {
         <div className="absolute inset-0" style={{ right: MINIMAP_WIDTH }}>
           <DeckGLCanvas
             layoutData={scaledData}
+            visibleNodes={zoomVisibility?.visibleNodes ?? []}
+            visibleEdges={zoomVisibility?.visibleEdges ?? []}
             onViewStateChange={handleViewStateChange}
             externalViewState={viewState}
           />
         </div>
         {/* Minimap on right */}
-        <Minimap
-          layoutData={scaledData}
-          viewState={effectiveViewState}
-          onNavigate={handleMinimapNavigate}
-          width={MINIMAP_WIDTH}
-        />
-        {/* TopN Settings */}
+        {filteredLayoutData && (
+          <Minimap
+            layoutData={filteredLayoutData}
+            viewState={effectiveViewState}
+            onNavigate={handleMinimapNavigate}
+            width={MINIMAP_WIDTH}
+          />
+        )}
         {/* Map Controls */}
         <MapControls
           zoom={currentZoom}
           minZoom={-13}
-          maxZoom={6}
+          maxZoom={8}
           onZoomChange={handleZoomChange}
           nodeSpacingX={nodeSpacingX}
           nodeSpacingY={nodeSpacingY}
@@ -349,12 +460,6 @@ export function BudgetFlowMap() {
           onNodeSpacingYChange={setNodeSpacingY}
           onNodeWidthChange={setNodeWidth}
           onFitToScreen={handleFitToScreen}
-          topProjects={topProjects}
-          topRecipients={topRecipients}
-          threshold={threshold}
-          onTopProjectsChange={setTopProjects}
-          onTopRecipientsChange={setTopRecipients}
-          onThresholdChange={setThreshold}
         />
       </div>
     </div>
