@@ -7,7 +7,7 @@ const INITIAL_VIEW_STATE: ViewState = {
   target: [0, 0],
   zoom: 0,
   minZoom: -2,
-  maxZoom: 6,
+  maxZoom: 8, // zoom=8で閾値≈1500万円、カバー率≈50%（中央値付近）
 }
 
 export const useStore = create<StoreState>()(
