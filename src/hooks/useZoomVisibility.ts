@@ -251,6 +251,9 @@ export function useZoomVisibility(
     const repositionedNodes: LayoutNode[] = []
     const newNodePositions = new Map<string, { x: number; y: number; height: number }>()
 
+    // Track which nodes are aggregated into "Other" nodes (nodeId -> otherNodeId)
+    const aggregatedNodeMapping = new Map<string, string>()
+
     // Debug counts
     const visibleByLayer = new Map<number, number>()
     const hiddenByLayer = new Map<number, number>()
@@ -367,9 +370,10 @@ export function useZoomVisibility(
         if (hiddenNodes.length > 0) {
           const totalAmount = hiddenNodes.reduce((sum, n) => sum + n.amount, 0)
           const height = amountToHeight(totalAmount, threshold, true) // isOther = true
+          const otherNodeId = `other-layer-${layer}`
 
           const otherNode: LayoutNode = {
-            id: `other-layer-${layer}`,
+            id: otherNodeId,
             type: layer === 4 ? 'recipient' : 'project',
             layer: layerIndex,
             name: `その他 (${hiddenNodes.length}件)`,
@@ -388,6 +392,11 @@ export function useZoomVisibility(
           repositionedNodes.push(otherNode)
           visibleNodeIds.add(otherNode.id)
           newNodePositions.set(otherNode.id, { x: otherNode.x, y: otherNode.y, height })
+
+          // Record mapping from hidden nodes to "Other" node
+          for (const hiddenNode of hiddenNodes) {
+            aggregatedNodeMapping.set(hiddenNode.id, otherNodeId)
+          }
         }
       }
     }
@@ -407,22 +416,61 @@ export function useZoomVisibility(
       targetYOffsets.set(nodeId, pos.y - pos.height / 2)
     }
 
-    // First pass: collect valid edges and sort by value (descending) for consistent ordering
-    const validEdges: Array<{ edge: LayoutEdge; sourcePos: { x: number; y: number; height: number }; targetPos: { x: number; y: number; height: number } }> = []
+    // First pass: collect valid edges (including aggregated edges)
+    // Map to aggregate edges: "effectiveSourceId->effectiveTargetId" -> aggregated edge info
+    const aggregatedEdgeMap = new Map<string, { value: number; edges: LayoutEdge[] }>()
 
     for (const edge of data.edges) {
-      if (visibleNodeIds.has(edge.sourceId) && visibleNodeIds.has(edge.targetId)) {
-        // Skip edges involving "Other" nodes
-        if (edge.targetId.startsWith('other-') || edge.sourceId.startsWith('other-')) {
-          continue
-        }
+      // Determine effective source and target (resolving aggregated nodes)
+      let effectiveSourceId = edge.sourceId
+      let effectiveTargetId = edge.targetId
 
-        const sourcePos = newNodePositions.get(edge.sourceId)
-        const targetPos = newNodePositions.get(edge.targetId)
+      // If source is aggregated, use the "Other" node
+      if (aggregatedNodeMapping.has(edge.sourceId)) {
+        effectiveSourceId = aggregatedNodeMapping.get(edge.sourceId)!
+      }
 
-        if (sourcePos && targetPos) {
-          validEdges.push({ edge, sourcePos, targetPos })
+      // If target is aggregated, use the "Other" node
+      if (aggregatedNodeMapping.has(edge.targetId)) {
+        effectiveTargetId = aggregatedNodeMapping.get(edge.targetId)!
+      }
+
+      // Both endpoints must be visible (either directly or via "Other" node)
+      if (!visibleNodeIds.has(effectiveSourceId) || !visibleNodeIds.has(effectiveTargetId)) {
+        continue
+      }
+
+      // Aggregate edges with the same effective source and target
+      const edgeKey = `${effectiveSourceId}->${effectiveTargetId}`
+      if (aggregatedEdgeMap.has(edgeKey)) {
+        const existing = aggregatedEdgeMap.get(edgeKey)!
+        existing.value += edge.value
+        existing.edges.push(edge)
+      } else {
+        aggregatedEdgeMap.set(edgeKey, { value: edge.value, edges: [edge] })
+      }
+    }
+
+    // Convert aggregated edges to valid edges array
+    const validEdges: Array<{ edge: LayoutEdge; sourcePos: { x: number; y: number; height: number }; targetPos: { x: number; y: number; height: number } }> = []
+
+    for (const [edgeKey, { value, edges }] of aggregatedEdgeMap) {
+      const [effectiveSourceId, effectiveTargetId] = edgeKey.split('->')
+
+      const sourcePos = newNodePositions.get(effectiveSourceId)
+      const targetPos = newNodePositions.get(effectiveTargetId)
+
+      if (sourcePos && targetPos) {
+        // Create aggregated edge (use first edge as template)
+        const aggregatedEdge: LayoutEdge = {
+          id: edges.length === 1 ? edges[0].id : `agg-${edgeKey}`,
+          sourceId: effectiveSourceId,
+          targetId: effectiveTargetId,
+          value: value,
+          width: 0, // Will be calculated later
+          path: [], // Will be calculated later
         }
+        validEdges.push({ edge: aggregatedEdge, sourcePos, targetPos })
       }
     }
 

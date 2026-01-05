@@ -81,6 +81,7 @@ export function DeckGLCanvas({
   // Create connected edges and nodes lookup for highlighting
   // Both hover and selection: show all ancestors and descendants (BFS traversal)
   // Combine highlights from both selected and hovered nodes
+  // Use visibleEdges (which includes aggregated edges) instead of layoutData.edges
   const { connectedEdges, connectedNodeIds } = useMemo(() => {
     const activeIds: string[] = []
     if (selectedNodeId) activeIds.push(selectedNodeId)
@@ -97,11 +98,11 @@ export function DeckGLCanvas({
     }
 
     // Show all ancestors and descendants (BFS traversal)
-    // Build adjacency maps for traversal
+    // Build adjacency maps for traversal using visibleEdges (includes aggregated edges)
     const sourceToTargets = new Map<string, string[]>()
     const targetToSources = new Map<string, string[]>()
 
-    for (const edge of layoutData.edges) {
+    for (const edge of visibleEdges) {
       // Forward edges (source -> target)
       if (!sourceToTargets.has(edge.sourceId)) {
         sourceToTargets.set(edge.sourceId, [])
@@ -115,7 +116,11 @@ export function DeckGLCanvas({
       targetToSources.get(edge.targetId)!.push(edge.sourceId)
     }
 
+    // Helper to check if a node is an "Other" aggregate node
+    const isOtherNode = (nodeId: string) => nodeId.startsWith('other-layer-')
+
     // BFS to find all descendants (downstream) from all active nodes
+    // Stop traversal at "Other" nodes (1-hop limit for aggregate nodes)
     const descendantsQueue = [...activeIds]
     const visitedDescendants = new Set<string>(activeIds)
 
@@ -127,12 +132,16 @@ export function DeckGLCanvas({
         if (!visitedDescendants.has(targetId)) {
           visitedDescendants.add(targetId)
           nodeIds.add(targetId)
-          descendantsQueue.push(targetId)
+          // Don't continue BFS from "Other" nodes (1-hop limit)
+          if (!isOtherNode(targetId)) {
+            descendantsQueue.push(targetId)
+          }
         }
       }
     }
 
     // BFS to find all ancestors (upstream) from all active nodes
+    // Stop traversal at "Other" nodes (1-hop limit for aggregate nodes)
     const ancestorsQueue = [...activeIds]
     const visitedAncestors = new Set<string>(activeIds)
 
@@ -144,20 +153,23 @@ export function DeckGLCanvas({
         if (!visitedAncestors.has(sourceId)) {
           visitedAncestors.add(sourceId)
           nodeIds.add(sourceId)
-          ancestorsQueue.push(sourceId)
+          // Don't continue BFS from "Other" nodes (1-hop limit)
+          if (!isOtherNode(sourceId)) {
+            ancestorsQueue.push(sourceId)
+          }
         }
       }
     }
 
-    // Collect all edges connecting the found nodes
-    for (const edge of layoutData.edges) {
+    // Collect all edges connecting the found nodes (using visibleEdges)
+    for (const edge of visibleEdges) {
       if (nodeIds.has(edge.sourceId) && nodeIds.has(edge.targetId)) {
         edges.add(edge.id)
       }
     }
 
     return { connectedEdges: edges, connectedNodeIds: nodeIds }
-  }, [layoutData.edges, hoveredNodeId, selectedNodeId])
+  }, [visibleEdges, hoveredNodeId, selectedNodeId])
 
   // Create layers with passed visible nodes/edges
   const layers = useMemo(() => {
