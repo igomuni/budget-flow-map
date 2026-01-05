@@ -181,10 +181,11 @@ const threshold = 1e11 * Math.pow(10, -zoom)
 - [ ] 集約/展開アニメーション → 未実装
 - [ ] 位置の連続性保持 → 現状は全体レイアウト再計算
 
-### Phase 4: maxZoom拡大 🚧 次のアクション
+### Phase 4: maxZoom拡大 ✅ 完了
 
-- [ ] maxZoomを6→8または9に拡大
-- [ ] パフォーマンステスト
+- [x] maxZoomを6→8に拡大
+- [x] パフォーマンステスト（17,000ノード、60fps維持）
+- 結果: 最大ズーム6400%、閾値1526万円、カバー率55%
 - 根拠: [20260104_recipient-distribution-analysis.md](./20260104_recipient-distribution-analysis.md)
 
 ---
